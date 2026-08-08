@@ -1,0 +1,10 @@
+name = "wormhole-chat"
+compatibility_date = "2024-11-01"
+pages = { directory = ".", placement = { mode = "smart" } }
+
+# 部署指南：
+# 1. 安装: npm install -g wrangler
+# 2. 登录: wrangler login
+# 3. 创建 Pages 项目: wrangler pages project create wormhole-chat
+# 4. 部署: wrangler pages deploy . --project-name=wormhole-chat
+# 5. 绑定 Workers: wrangler pages bindings fix  (自动添加 Pages Functions)
