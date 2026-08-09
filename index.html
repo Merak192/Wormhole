@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wormhole - P2P 加密聊天</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 连接视图 -->
+    <div id="connect-view" class="view">
+      <div class="logo">
+        <div class="logo-icon">🪱</div>
+        <h1>Wormhole</h1>
+        <p class="subtitle">P2P 加密即时聊天</p>
+      </div>
+
+      <div class="connect-panel">
+        <div class="input-group">
+          <label for="code-input">输入4位数连接码</label>
+          <input
+            type="text"
+            id="code-input"
+            class="code-input"
+            placeholder="例如: 1234"
+            maxlength="4"
+            pattern="\d{4}"
+            inputmode="numeric"
+          >
+        </div>
+
+        <div class="button-group">
+          <button id="create-btn" class="btn btn-primary">
+            <span class="btn-icon">➕</span>
+            创建房间
+          </button>
+          <button id="join-btn" class="btn btn-secondary">
+            <span class="btn-icon">🔗</span>
+            加入房间
+          </button>
+        </div>
+
+        <div id="error-message" class="error-message" style="display: none;"></div>
+
+        <div id="code-display" class="code-display" style="display: none;">
+          <p>你的连接码是:</p>
+          <div class="code-number" id="code-number"></div>
+          <p class="code-hint">将此号码告诉对方，等待连接...</p>
+        </div>
+
+        <div class="status-area">
+          <div id="status" class="status-dot status-idle"></div>
+          <span id="status-text">准备就绪</span>
+        </div>
+      </div>
+
+      <div class="info-panel">
+        <h3>如何使用</h3>
+        <ol>
+          <li>一方点击"创建房间"，获得4位连接码</li>
+          <li>另一方输入相同连接码，点击"加入房间"</li>
+          <li>连接建立后，开始加密聊天</li>
+        </ol>
+        <div class="security-info">
+          <p>🔒 端到端加密 | 消息仅保存在本地 | 关闭浏览器自动清除</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 聊天视图 -->
+    <div id="chat-view" class="view" style="display: none;">
+      <div class="chat-header">
+        <button id="back-btn" class="back-btn">← 返回</button>
+        <div class="chat-info">
+          <div class="chat-code">房间号: <span id="chat-code"></span></div>
+          <div class="status-area">
+            <div id="status-chat" class="status-dot status-idle"></div>
+            <span id="status-text-chat">准备就绪</span>
+          </div>
+        </div>
+        <div id="connected-indicator" class="connected-indicator" style="display: none;">
+          ✓ 已连接
+        </div>
+      </div>
+
+      <div id="messages" class="messages-container">
+        <div class="welcome-message">
+          <p>🔐 连接已建立，开始加密聊天吧！</p>
+          <p class="welcome-hint">所有消息均使用 AES-256-GCM 加密</p>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <textarea
+          id="message-input"
+          class="message-input"
+          placeholder="输入消息... (Enter 发送)"
+          rows="1"
+        ></textarea>
+        <button id="send-btn" class="send-btn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="script.ts"></script>
+</body>
+</html>
