@@ -1,6 +1,6 @@
 # Wormhole - P2P 加密即时聊天
 
-基于 WebRTC + Cloudflare Pages + KV 的端到端加密 P2P 聊天应用。
+基于 WebRTC + Cloudflare Pages + KV 的端到端加密 P2P 聊天应用
 
 ## 项目结构
 
