@@ -11,7 +11,7 @@
  * PBKDF2). Messages auto-expire from KV after 10 minutes (expirationTtl)
  * so nothing lingers.
  *
- * Requires a KV namespace bound as `ROOM_KV` in the Pages project
+ * Requires a KV namespace bound as `WORM_HOLE` in the Pages project
  * (Settings → Functions → KV namespace bindings — no wrangler.toml needed).
  */
 
@@ -33,8 +33,8 @@ export async function onRequestGet(context) {
   if (!ROOM_CODE_RE.test(code)) {
     return jsonResponse({ error: 'Room code must be exactly 4 digits.' }, 400);
   }
-  if (!env.ROOM_KV) {
-    return jsonResponse({ error: 'ROOM_KV binding is not configured on this Pages project.' }, 500);
+  if (!env.WORM_HOLE) {
+    return jsonResponse({ error: 'WORM_HOLE KV binding is not configured on this Pages project.' }, 500);
   }
 
   const url = new URL(request.url);
@@ -46,18 +46,18 @@ export async function onRequestGet(context) {
   // stay well within Workers KV's free-tier write limits.
   if (heartbeat && clientId) {
     context.waitUntil(
-      env.ROOM_KV.put(`presence:${code}:${clientId}`, '1', { expirationTtl: PRESENCE_TTL_SECONDS })
+      env.WORM_HOLE.put(`presence:${code}:${clientId}`, '1', { expirationTtl: PRESENCE_TTL_SECONDS })
     );
   }
 
   const msgPrefix = `msg:${code}:`;
-  const list = await env.ROOM_KV.list({ prefix: msgPrefix, limit: 200 });
+  const list = await env.WORM_HOLE.list({ prefix: msgPrefix, limit: 200 });
 
   const messages = [];
   const afterFullKey = msgPrefix + after;
   for (const key of list.keys) {
     if (key.name > afterFullKey) {
-      const value = await env.ROOM_KV.get(key.name);
+      const value = await env.WORM_HOLE.get(key.name);
       if (value !== null) {
         messages.push({ key: key.name.slice(msgPrefix.length), ciphertext: value });
       }
@@ -66,7 +66,7 @@ export async function onRequestGet(context) {
 
   const cursor = messages.length ? messages[messages.length - 1].key : after;
 
-  const presenceList = await env.ROOM_KV.list({ prefix: `presence:${code}:` });
+  const presenceList = await env.WORM_HOLE.list({ prefix: `presence:${code}:` });
 
   return jsonResponse({ messages, cursor, online: presenceList.keys.length });
 }
@@ -78,8 +78,8 @@ export async function onRequestPost(context) {
   if (!ROOM_CODE_RE.test(code)) {
     return jsonResponse({ error: 'Room code must be exactly 4 digits.' }, 400);
   }
-  if (!env.ROOM_KV) {
-    return jsonResponse({ error: 'ROOM_KV binding is not configured on this Pages project.' }, 500);
+  if (!env.WORM_HOLE) {
+    return jsonResponse({ error: 'WORM_HOLE KV binding is not configured on this Pages project.' }, 500);
   }
 
   let body;
@@ -101,11 +101,11 @@ export async function onRequestPost(context) {
   const rand = crypto.randomUUID();
   const key = `msg:${code}:${ts}-${rand}`;
 
-  await env.ROOM_KV.put(key, ciphertext, { expirationTtl: MESSAGE_TTL_SECONDS });
+  await env.WORM_HOLE.put(key, ciphertext, { expirationTtl: MESSAGE_TTL_SECONDS });
 
   if (typeof clientId === 'string' && clientId) {
     context.waitUntil(
-      env.ROOM_KV.put(`presence:${code}:${clientId}`, '1', { expirationTtl: PRESENCE_TTL_SECONDS })
+      env.WORM_HOLE.put(`presence:${code}:${clientId}`, '1', { expirationTtl: PRESENCE_TTL_SECONDS })
     );
   }
 
