@@ -1,0 +1,13 @@
+name = "aes-room-chat"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "."
+
+# Binds to the ChatRoom Durable Object hosted in the separately-deployed
+# "aes-room-chat-do" Worker (see do-worker/). Pages projects cannot host a
+# Durable Object class themselves, only bind to one that already exists in
+# another Worker — hence "script_name" here instead of a co-located class.
+# NOTE: script_name must exactly match the `name` field in do-worker/wrangler.toml.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "ChatRoom"
+script_name = "aes-room-chat-do"
