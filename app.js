@@ -1,8 +1,18 @@
 /**
  * All encryption happens here, in the browser, using the native Web Crypto
- * API. The Durable Object behind /api/room/<code> never receives a key and
- * never sees plaintext — only base64 AES-GCM ciphertext strings travel over
- * the WebSocket.
+ * API. The Cloudflare Pages Function (functions/api/room/[code].js) never
+ * receives a key and never sees plaintext — only base64 ciphertext strings.
+ *
+ * Transport: short-polling over plain fetch() against a Workers-KV-backed
+ * API. This requires zero extra Cloudflare setup beyond a KV namespace
+ * binding added in the Pages dashboard — no Workers, no wrangler.toml.
+ *
+ * LATENCY NOTE: the poll interval below is tuned fairly aggressively, but
+ * delivery speed is ultimately bounded by Workers KV's own eventual
+ * consistency (writes can take a few seconds — occasionally more — to
+ * become visible from a different edge location), not just how often we
+ * poll. This is the fastest this architecture can reasonably go without
+ * introducing a Durable Object / Worker.
  *
  * Key derivation: PBKDF2(roomCode, fixed app salt, 100_000 iterations) -> AES-256-GCM key.
  * Per-message encryption: random 12-byte IV, AES-GCM, output = base64(iv || ciphertext).
@@ -10,11 +20,16 @@
 
 const APP_SALT = new TextEncoder().encode('aes-room-chat.v1.static-salt');
 const PBKDF2_ITERATIONS = 100_000;
+const POLL_INTERVAL_MS = 500;
+const HEARTBEAT_EVERY_N_POLLS = 40; // ~every 20s at 500ms/poll — safely under the 60s KV TTL
 
-let socket = null;
 let cryptoKey = null;
 let roomCode = null;
 let displayName = null;
+let clientId = null;
+let cursor = '';
+let pollTimer = null;
+let pollCount = 0;
 
 // ---------- DOM references ----------
 const joinScreen = document.getElementById('join-screen');
@@ -111,54 +126,60 @@ async function join() {
 
   roomCode = code;
   displayName = name;
+  clientId = crypto.randomUUID();
+  cursor = '';
+  pollCount = 0;
   cryptoKey = await deriveKey(code);
 
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  socket = new WebSocket(`${proto}://${location.host}/api/room/${code}`);
-
-  socket.addEventListener('open', () => {
-    joinBtn.disabled = false;
-    joinScreen.classList.add('hidden');
-    chatScreen.classList.remove('hidden');
-    roomLabel.textContent = `Room ${code}`;
-    addSystemMessage(`You joined as "${name}". Messages are encrypted before they leave your device.`);
-    messageInput.focus();
-  });
-
-  socket.addEventListener('message', onSocketMessage);
-
-  socket.addEventListener('close', () => {
-    if (joinScreen.classList.contains('hidden')) {
-      addSystemMessage('Connection closed.');
-    }
-  });
-
-  socket.addEventListener('error', () => {
-    joinBtn.disabled = false;
-    joinError.textContent = 'Could not connect. Please try again.';
-  });
-}
-
-async function onSocketMessage(event) {
-  let parsed;
   try {
-    parsed = JSON.parse(event.data);
-  } catch {
-    parsed = null;
-  }
-
-  // Unencrypted presence frames sent by the Durable Object itself.
-  if (parsed && parsed.__system) {
-    if (parsed.__system.type === 'presence') {
-      presenceLabel.textContent = `· ${parsed.__system.count} online`;
-    }
+    await poll(true); // initial fetch also sends a heartbeat; throws on failure
+  } catch (err) {
+    joinError.textContent = 'Could not reach the room API. Check your connection and try again.';
+    joinBtn.disabled = false;
     return;
   }
 
-  // Otherwise treat the raw frame as base64 AES-GCM ciphertext.
+  joinBtn.disabled = false;
+  joinScreen.classList.add('hidden');
+  chatScreen.classList.remove('hidden');
+  roomLabel.textContent = `Room ${code}`;
+  addSystemMessage(`You joined as "${name}". Messages are encrypted before they leave your device.`);
+  messageInput.focus();
+
+  pollTimer = setInterval(() => {
+    pollCount += 1;
+    const sendHeartbeat = pollCount % HEARTBEAT_EVERY_N_POLLS === 0;
+    poll(sendHeartbeat).catch(() => {
+      /* transient network errors are ignored; next tick retries */
+    });
+  }, POLL_INTERVAL_MS);
+}
+
+/** Fetches new messages since `cursor`. Optionally sends a presence heartbeat. */
+async function poll(heartbeat) {
+  const params = new URLSearchParams({ after: cursor, clientId });
+  if (heartbeat) params.set('hb', '1');
+
+  const res = await fetch(`/api/room/${roomCode}?${params.toString()}`);
+  if (!res.ok) {
+    const info = await res.json().catch(() => ({}));
+    throw new Error(info.error || `Request failed (${res.status})`);
+  }
+  const data = await res.json();
+
+  if (typeof data.cursor === 'string') cursor = data.cursor;
+  if (typeof data.online === 'number') presenceLabel.textContent = `· ${data.online} online`;
+
+  for (const item of data.messages || []) {
+    await handleIncoming(item.ciphertext);
+  }
+}
+
+async function handleIncoming(ciphertextB64) {
   try {
-    const plaintext = await decryptText(cryptoKey, event.data);
+    const plaintext = await decryptText(cryptoKey, ciphertextB64);
     const msg = JSON.parse(plaintext);
+    if (msg.clientId === clientId) return; // we already rendered our own message optimistically
     addMessage(msg.name, msg.text, false);
   } catch (err) {
     addBadMessage('Received a message that could not be decrypted (wrong room code on sender\'s side?).');
@@ -168,21 +189,42 @@ async function onSocketMessage(event) {
 async function sendMessage(e) {
   e.preventDefault();
   const text = messageInput.value.trim();
-  if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!text || !roomCode) return;
 
-  const payload = JSON.stringify({ name: displayName, text, ts: Date.now() });
-  const ciphertext = await encryptText(cryptoKey, payload);
-  socket.send(ciphertext);
+  const payload = JSON.stringify({ name: displayName, text, ts: Date.now(), clientId });
+  let ciphertext;
+  try {
+    ciphertext = await encryptText(cryptoKey, payload);
+  } catch (err) {
+    addBadMessage('Encryption failed — message not sent.');
+    return;
+  }
 
-  addMessage(displayName, text, true);
+  addMessage(displayName, text, true); // optimistic local echo
   messageInput.value = '';
+
+  try {
+    const res = await fetch(`/api/room/${roomCode}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ciphertext, clientId }),
+    });
+    if (!res.ok) throw new Error('send failed');
+    // Immediately poll again so a fast responder's reply (or our own
+    // message becoming visible to KV reads) shows up without waiting for
+    // the next scheduled tick.
+    poll(false).catch(() => {});
+  } catch (err) {
+    addBadMessage('Failed to send — check your connection and try again.');
+  }
 }
 
 function leaveRoom() {
-  if (socket) socket.close();
-  socket = null;
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
   cryptoKey = null;
   roomCode = null;
+  cursor = '';
   messagesEl.innerHTML = '';
   presenceLabel.textContent = '';
   chatScreen.classList.add('hidden');
