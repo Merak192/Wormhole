@@ -1,27 +1,27 @@
 /**
- * All encryption happens here, in the browser, using the native Web Crypto
- * API. The Cloudflare Pages Function (functions/api/room/[code].js) never
- * receives a key and never sees plaintext — only base64 ciphertext strings.
+ * Two layers here:
  *
- * Transport: short-polling over plain fetch() against a Workers-KV-backed
- * API. This requires zero extra Cloudflare setup beyond a KV namespace
- * binding added in the Pages dashboard — no Workers, no wrangler.toml.
+ * 1. SIGNALING (via the Cloudflare Pages Function + KV): short-polls a
+ *    small relay that only ever carries WebRTC handshake data — SDP
+ *    offers/answers, ICE candidates, and periodic "hello" presence
+ *    broadcasts. No chat content ever touches this path.
  *
- * LATENCY NOTE: the poll interval below is tuned fairly aggressively, but
- * delivery speed is ultimately bounded by Workers KV's own eventual
- * consistency (writes can take a few seconds — occasionally more — to
- * become visible from a different edge location), not just how often we
- * poll. This is the fastest this architecture can reasonably go without
- * introducing a Durable Object / Worker.
+ * 2. CHAT (via WebRTC RTCDataChannel, one per peer — a mesh): once two
+ *    browsers finish steps in layer 1, they open a direct connection.
+ *    Every chat message is AES-256-GCM encrypted (key derived from the
+ *    room code via PBKDF2, same as before) and sent straight over that
+ *    channel — Cloudflare is not involved at all at this point.
  *
- * Key derivation: PBKDF2(roomCode, fixed app salt, 100_000 iterations) -> AES-256-GCM key.
- * Per-message encryption: random 12-byte IV, AES-GCM, output = base64(iv || ciphertext).
+ * Glare avoidance for the mesh: for any pair of peers, whoever has the
+ * lexicographically smaller clientId is the "offerer" for that pair. Both
+ * sides compute this independently and agree without needing to negotiate.
  */
 
 const APP_SALT = new TextEncoder().encode('aes-room-chat.v1.static-salt');
 const PBKDF2_ITERATIONS = 100_000;
-const POLL_INTERVAL_MS = 500;
-const HEARTBEAT_EVERY_N_POLLS = 40; // ~every 20s at 500ms/poll — safely under the 60s KV TTL
+const SIGNAL_POLL_INTERVAL_MS = 1000;
+const HELLO_REBROADCAST_EVERY_N_POLLS = 15; // ~every 15s — lets late joiners discover existing peers
+const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 let cryptoKey = null;
 let roomCode = null;
@@ -30,6 +30,12 @@ let clientId = null;
 let cursor = '';
 let pollTimer = null;
 let pollCount = 0;
+let kvOnlineCount = 0;
+
+/** peerId -> { name, pc, dc, connected, remoteSet, offerer, warnedFailure } */
+const peers = new Map();
+/** peerId -> queued ICE candidate inits received before remote description was set */
+const pendingIce = new Map();
 
 // ---------- DOM references ----------
 const joinScreen = document.getElementById('join-screen');
@@ -55,9 +61,8 @@ displayNameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joi
 leaveBtn.addEventListener('click', leaveRoom);
 sendForm.addEventListener('submit', sendMessage);
 
-// ---------- Crypto helpers ----------
+// ---------- Crypto helpers (unchanged from earlier versions) ----------
 
-/** Derives a non-extractable AES-256-GCM CryptoKey from the 4-digit room code. */
 async function deriveKey(code) {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -67,12 +72,7 @@ async function deriveKey(code) {
     ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: APP_SALT,
-      iterations: PBKDF2_ITERATIONS,
-      hash: 'SHA-256',
-    },
+    { name: 'PBKDF2', salt: APP_SALT, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -129,12 +129,15 @@ async function join() {
   clientId = crypto.randomUUID();
   cursor = '';
   pollCount = 0;
+  peers.clear();
+  pendingIce.clear();
   cryptoKey = await deriveKey(code);
 
   try {
-    await poll(true); // initial fetch also sends a heartbeat; throws on failure
+    await pollSignals(true); // also sends our first "hello" + heartbeat
+    await sendSignal(null, 'hello', null);
   } catch (err) {
-    joinError.textContent = 'Could not reach the room API. Check your connection and try again.';
+    joinError.textContent = 'Could not reach the signaling API. Check your connection and try again.';
     joinBtn.disabled = false;
     return;
   }
@@ -143,20 +146,19 @@ async function join() {
   joinScreen.classList.add('hidden');
   chatScreen.classList.remove('hidden');
   roomLabel.textContent = `Room ${code}`;
-  addSystemMessage(`You joined as "${name}". Messages are encrypted before they leave your device.`);
+  addSystemMessage(`You joined as "${name}". Looking for others in this room…`);
   messageInput.focus();
+  updatePresenceDisplay();
 
   pollTimer = setInterval(() => {
     pollCount += 1;
-    const sendHeartbeat = pollCount % HEARTBEAT_EVERY_N_POLLS === 0;
-    poll(sendHeartbeat).catch(() => {
-      /* transient network errors are ignored; next tick retries */
-    });
-  }, POLL_INTERVAL_MS);
+    const doHeartbeat = pollCount % HELLO_REBROADCAST_EVERY_N_POLLS === 0;
+    pollSignals(doHeartbeat).catch(() => {});
+    if (doHeartbeat) sendSignal(null, 'hello', null).catch(() => {});
+  }, SIGNAL_POLL_INTERVAL_MS);
 }
 
-/** Fetches new messages since `cursor`. Optionally sends a presence heartbeat. */
-async function poll(heartbeat) {
+async function pollSignals(heartbeat) {
   const params = new URLSearchParams({ after: cursor, clientId });
   if (heartbeat) params.set('hb', '1');
 
@@ -168,19 +170,169 @@ async function poll(heartbeat) {
   const data = await res.json();
 
   if (typeof data.cursor === 'string') cursor = data.cursor;
-  if (typeof data.online === 'number') presenceLabel.textContent = `· ${data.online} online`;
+  if (typeof data.online === 'number') {
+    kvOnlineCount = data.online;
+    updatePresenceDisplay();
+  }
 
   for (const item of data.messages || []) {
-    await handleIncoming(item.ciphertext);
+    handleSignal(item.signal);
   }
 }
 
-async function handleIncoming(ciphertextB64) {
+async function sendSignal(to, type, data) {
+  await fetch(`/api/room/${roomCode}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ from: clientId, to, type, name: displayName, data }),
+  });
+}
+
+function handleSignal(signal) {
+  if (!signal || signal.from === clientId) return; // ignore our own broadcasts
+
+  if (signal.type === 'hello') {
+    handleHello(signal.from, signal.name);
+    return;
+  }
+
+  // Everything else is targeted — ignore if it's not addressed to us.
+  if (signal.to !== clientId) return;
+
+  if (signal.type === 'offer') handleOffer(signal.from, signal.name, signal.data);
+  else if (signal.type === 'answer') handleAnswer(signal.from, signal.data);
+  else if (signal.type === 'ice') handleIce(signal.from, signal.data);
+}
+
+// ---------- WebRTC mesh ----------
+
+function ensurePeer(peerId, name) {
+  let entry = peers.get(peerId);
+  if (entry) {
+    if (name) entry.name = name;
+    return entry;
+  }
+
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  entry = { name: name || 'Someone', pc, dc: null, connected: false, remoteSet: false, offerer: false, warnedFailure: false };
+  peers.set(peerId, entry);
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      sendSignal(peerId, 'ice', event.candidate.toJSON()).catch(() => {});
+    }
+  };
+
+  pc.ondatachannel = (event) => {
+    setupDataChannel(peerId, entry, event.channel);
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if ((pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') && !entry.warnedFailure) {
+      entry.warnedFailure = true;
+      addBadMessage(
+        `Could not establish a direct connection to ${entry.name}. You may be on a restrictive network (no relay server is configured for this demo).`
+      );
+    }
+  };
+
+  return entry;
+}
+
+function setupDataChannel(peerId, entry, channel) {
+  entry.dc = channel;
+  channel.onopen = () => {
+    entry.connected = true;
+    updatePresenceDisplay();
+    addSystemMessage(`Connected directly to ${entry.name}.`);
+  };
+  channel.onclose = () => {
+    entry.connected = false;
+    updatePresenceDisplay();
+  };
+  channel.onmessage = (event) => handleIncomingCiphertext(event.data, entry.name);
+}
+
+async function createOfferTo(peerId, name) {
+  const entry = ensurePeer(peerId, name);
+  entry.offerer = true;
+  const channel = entry.pc.createDataChannel('chat');
+  setupDataChannel(peerId, entry, channel);
+
+  const offer = await entry.pc.createOffer();
+  await entry.pc.setLocalDescription(offer);
+  await sendSignal(peerId, 'offer', entry.pc.localDescription);
+}
+
+async function handleHello(peerId, name) {
+  if (peers.has(peerId)) {
+    const entry = peers.get(peerId);
+    if (name) entry.name = name;
+    return; // already known/connecting/connected
+  }
+  if (clientId < peerId) {
+    // We have the smaller id for this pair — we initiate.
+    createOfferTo(peerId, name).catch(() => {});
+  } else {
+    // Just remember their name; they will send us an offer shortly.
+    ensurePeer(peerId, name);
+  }
+}
+
+async function handleOffer(peerId, name, sdp) {
+  const entry = ensurePeer(peerId, name);
+  await entry.pc.setRemoteDescription(sdp);
+  entry.remoteSet = true;
+  await flushPendingIce(peerId, entry);
+
+  const answer = await entry.pc.createAnswer();
+  await entry.pc.setLocalDescription(answer);
+  await sendSignal(peerId, 'answer', entry.pc.localDescription);
+}
+
+async function handleAnswer(peerId, sdp) {
+  const entry = peers.get(peerId);
+  if (!entry) return;
+  await entry.pc.setRemoteDescription(sdp);
+  entry.remoteSet = true;
+  await flushPendingIce(peerId, entry);
+}
+
+async function handleIce(peerId, candidateInit) {
+  const entry = peers.get(peerId);
+  if (entry && entry.remoteSet) {
+    try {
+      await entry.pc.addIceCandidate(candidateInit);
+    } catch (err) {
+      /* ignore malformed/late candidates */
+    }
+  } else {
+    const queue = pendingIce.get(peerId) || [];
+    queue.push(candidateInit);
+    pendingIce.set(peerId, queue);
+  }
+}
+
+async function flushPendingIce(peerId, entry) {
+  const queue = pendingIce.get(peerId);
+  if (!queue || !queue.length) return;
+  pendingIce.delete(peerId);
+  for (const candidateInit of queue) {
+    try {
+      await entry.pc.addIceCandidate(candidateInit);
+    } catch (err) {
+      /* ignore malformed/late candidates */
+    }
+  }
+}
+
+// ---------- Chat send/receive ----------
+
+async function handleIncomingCiphertext(ciphertextB64, fromName) {
   try {
     const plaintext = await decryptText(cryptoKey, ciphertextB64);
     const msg = JSON.parse(plaintext);
-    if (msg.clientId === clientId) return; // we already rendered our own message optimistically
-    addMessage(msg.name, msg.text, false);
+    addMessage(msg.name || fromName, msg.text, false);
   } catch (err) {
     addBadMessage('Received a message that could not be decrypted (wrong room code on sender\'s side?).');
   }
@@ -191,7 +343,7 @@ async function sendMessage(e) {
   const text = messageInput.value.trim();
   if (!text || !roomCode) return;
 
-  const payload = JSON.stringify({ name: displayName, text, ts: Date.now(), clientId });
+  const payload = JSON.stringify({ name: displayName, text, ts: Date.now() });
   let ciphertext;
   try {
     ciphertext = await encryptText(cryptoKey, payload);
@@ -200,31 +352,39 @@ async function sendMessage(e) {
     return;
   }
 
-  addMessage(displayName, text, true); // optimistic local echo
+  let deliveredTo = 0;
+  for (const entry of peers.values()) {
+    if (entry.connected && entry.dc && entry.dc.readyState === 'open') {
+      try {
+        entry.dc.send(ciphertext);
+        deliveredTo += 1;
+      } catch (err) {
+        /* ignore individual send failures */
+      }
+    }
+  }
+
+  addMessage(displayName, text, true);
   messageInput.value = '';
 
-  try {
-    const res = await fetch(`/api/room/${roomCode}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ciphertext, clientId }),
-    });
-    if (!res.ok) throw new Error('send failed');
-    // Immediately poll again so a fast responder's reply (or our own
-    // message becoming visible to KV reads) shows up without waiting for
-    // the next scheduled tick.
-    poll(false).catch(() => {});
-  } catch (err) {
-    addBadMessage('Failed to send — check your connection and try again.');
+  if (deliveredTo === 0 && peers.size === 0) {
+    addSystemMessage('No one else is connected yet — your message stayed on this device.');
   }
 }
 
 function leaveRoom() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
+  for (const entry of peers.values()) {
+    try { entry.dc && entry.dc.close(); } catch (e) {}
+    try { entry.pc.close(); } catch (e) {}
+  }
+  peers.clear();
+  pendingIce.clear();
   cryptoKey = null;
   roomCode = null;
   cursor = '';
+  kvOnlineCount = 0;
   messagesEl.innerHTML = '';
   presenceLabel.textContent = '';
   chatScreen.classList.add('hidden');
@@ -233,6 +393,11 @@ function leaveRoom() {
 }
 
 // ---------- Rendering ----------
+
+function updatePresenceDisplay() {
+  const connectedCount = [...peers.values()].filter((p) => p.connected).length;
+  presenceLabel.textContent = `· ${kvOnlineCount} in room · ${connectedCount} connected directly`;
+}
 
 function addMessage(name, text, mine) {
   const div = document.createElement('div');
