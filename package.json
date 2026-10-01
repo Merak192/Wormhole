@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev public --kv WORM_HOLE",
+    "dev": "node local/dev.mjs",
+    "dev:wrangler": "wrangler pages dev public --kv WORM_HOLE",
     "test": "node --test test/auth.test.mjs",
     "deploy": "wrangler pages deploy public"
   },
