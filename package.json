@@ -1,0 +1,14 @@
+{
+  "name": "worm-hole",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public --kv WORM_HOLE",
+    "test": "node --test test/auth.test.mjs",
+    "deploy": "wrangler pages deploy public"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

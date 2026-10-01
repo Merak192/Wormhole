@@ -1,0 +1,11 @@
+# OPTIONAL. Rename to wrangler.toml only if you want bindings managed in code.
+# Once a wrangler.toml with pages_build_output_dir exists, Cloudflare treats it as the
+# source of truth and the dashboard's Bindings page becomes read-only.
+name = "worm-hole"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "public"
+
+[[kv_namespaces]]
+binding = "WORM_HOLE"
+id = "<YOUR_KV_NAMESPACE_ID>"
+preview_id = "<YOUR_PREVIEW_KV_NAMESPACE_ID>"
