@@ -1,0 +1,6 @@
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.run; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss://basspistol.org wss://bucket.coracle.social wss://chorus.pjv.me wss://koru.bitcointxoko.org wss://nos.lol wss://nostr-01.uid.ovh wss://nostr-01.yakihonne.com wss://nostr-relay.corb.net wss://nostr.islandarea.net wss://nostr.sathoarder.com wss://nostr.tegila.com.br wss://nostr.vulpem.com wss://purplerelay.com wss://relay-can.zombi.cloudrodion.com wss://relay-rpi.edufeed.org wss://relay.agorist.space wss://relay.artio.inf.unibe.ch wss://relay.mostr.pub wss://relay.mostro.network wss://relay.sigit.io wss://relay02.lnfi.network wss://schnorr.me wss://staging.yabu.me wss://strfry.shock.network wss://top.testrelay.top; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
