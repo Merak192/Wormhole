@@ -15,7 +15,7 @@
  * later loads it from history.
  */
 import { ID_RE, json, fail, guard, readJson, getSessionUser } from '../../_lib/auth.js';
-import { pairKey, friendKey, encryptMsg, pushHistory } from '../../_lib/friends.js';
+import { pairKey, friendKey, encryptMsg, pushHistory, genPairKey } from '../../_lib/friends.js';
 
 const genId = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
 
@@ -39,8 +39,14 @@ export async function onRequestPost({ request, env }) {
   const rel = await env.WORM_HOLE.get(friendKey(me.id, uuid), 'json');
   if (rel?.status !== 'friend') return fail(403, 'not_friends', 'You are not friends with this user yet.');
 
-  const pk = await env.WORM_HOLE.get(pairKey(me.id, uuid));
-  if (!pk) return fail(500, 'misconfigured', 'Pair key missing. Try re-sending the friend request.');
+  // Self-healing pair key: created on first use, so a pair formed before the
+  // key logic existed (or where the request came in the other direction)
+  // never 500s on a legitimate message. Both users derive the same key.
+  let pk = await env.WORM_HOLE.get(pairKey(me.id, uuid));
+  if (!pk) {
+    pk = genPairKey();
+    await env.WORM_HOLE.put(pairKey(me.id, uuid), pk);
+  }
 
   const c = await encryptMsg(pk, text);
   const msgId = clientMsgId || genId();
