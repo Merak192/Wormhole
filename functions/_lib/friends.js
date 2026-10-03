@@ -46,6 +46,10 @@ export function pair(a, b) {
 export const friendKey = (a, b) => `friend:${pair(a, b).join(':')}`;
 export const pairKey = (a, b) => `pairkey:${pair(a, b).join(':')}`;
 export const histKey = (a, b) => `hist:${pair(a, b).join(':')}`;
+// Per-DEVICE "I cleared this conversation" marker. The pair's message data
+// stays in KV until BOTH devices have cleared it, so the other side keeps
+// seeing history; each device just stops *displaying* its own cleared copy.
+export const clearKey = (a, b, deviceId) => `clear:${pair(a, b).join(':')}:${deviceId}`;
 
 /* ── crypto ────────────────────────────────────────────────────── */
 
