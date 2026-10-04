@@ -462,6 +462,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .file-t { min-width: 0; line-height: 1.3; }
 .file-t b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-t span { font-size: 12px; color: var(--text-3); }
+.files-empty { padding: 6px 8px; font-size: 12.5px; color: var(--text-3); }
 
 /* Scrim behind the overlay info panel: blur layer is constant, only opacity animates */
 .scrim {
@@ -877,12 +878,6 @@ const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const mqSb = matchMedia('(min-width: 761px)');    // sidebar docked
 const mqInfo = matchMedia('(min-width: 1100px)'); // info panel docked
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const pick = a => a[Math.floor(Math.random() * a.length)];
-let _id = 0;
-// Per-page counter is only for local DOM-keying of the mock demo contacts
-// (which never touch KV / P2P). Anything that goes over the wire or into KV
-// must use wireId() so it survives a page refresh.
-const uid = () => 'm' + (++_id);
 const wireId = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
 
 /* Retrigger a CSS animation class */
@@ -927,77 +922,11 @@ function rowTime(d) {
 }
 
 /* ==========================================================================
-   MOCK DATA  ([from, text, minutesAgo, status])
+   PEOPLE — the conversation list. Started empty: it is populated at runtime
+   from the server (loadFriends -> addFriendToList for accepted friends) and
+   from P2P arrivals (receiveFromPeer materializes a peer on demand).
    ========================================================================== */
-const NOW = Date.now();
-const RAW = [
-  { id: 'mira', name: 'Mira Okafor', role: 'Product Designer', status: 'online', h: 158, tz: 'America/New_York', loc: 'New York, US', email: 'mira@northfield.studio', unread: 0,
-    files: [['Onboarding-flow-v3.fig', '4.2 MB', 'Sep 28', 'FIG'], ['Type-scale-notes.pdf', '860 KB', 'Sep 26', 'PDF'], ['Empty-states.png', '2.1 MB', 'Sep 24', 'PNG']],
-    inbound: ['Quick one: can you send the final spacing tokens?', 'Never mind, found them.'],
-    msgs: [
-      ['them', 'Morning! Did you get a chance to look at the onboarding flow?', 1500],
-      ['me', 'Just finished the first pass. The empty states need work.', 1490, 'read'],
-      ['them', "Agreed. I'll sketch a calmer version.", 1485],
-      ['me', 'Perfect, no rush.', 1480, 'read'],
-      ['them', 'Sketches are up in the shared folder.', 95],
-      ['them', 'I removed the illustration from the welcome step. It felt louder than the product.', 94],
-      ['me', 'Much better. The spacing finally breathes.', 70, 'read'],
-      ['them', 'Can we go through the type scale before the review at 3?', 6],
-      ['them', 'Also, the new accent reads too bright on dark. Want to compare two options?', 5],
-    ] },
-  { id: 'jonas', name: 'Jonas Weber', role: 'Frontend Engineer', status: 'online', h: 210, tz: 'Europe/Berlin', loc: 'Berlin, DE', email: 'jonas@northfield.studio', unread: 3,
-    files: [['sidebar-refactor.diff', '18 KB', 'Today', 'DIFF'], ['perf-trace.json', '3.4 MB', 'Sep 30', 'JSON']],
-    inbound: ['Merged. Deploying to staging in a few minutes.', 'Staging is up if you want to take a look.'],
-    msgs: [
-      ['them', 'Pushed the sidebar refactor.', 140],
-      ['me', 'Nice. Did you check reduced motion?', 130, 'read'],
-      ['them', 'On it.', 125],
-      ['them', 'The indicator animation is smooth now.', 22],
-      ['them', 'Transform only, no layout thrash.', 21],
-      ['them', 'Trace attached if you want the numbers.', 20],
-    ] },
-  { id: 'lena', name: 'Lena Park', role: 'Research Lead', status: 'away', h: 28, tz: 'Asia/Seoul', loc: 'Seoul, KR', email: 'lena@northfield.studio', unread: 1,
-    files: [['Interview-synthesis.pdf', '1.4 MB', 'Sep 30', 'PDF'], ['Participants.csv', '12 KB', 'Sep 27', 'CSV']],
-    inbound: ['Also: nobody noticed the loading animation, which is a good sign.'],
-    msgs: [
-      ['them', 'Interview notes from this week are in the folder.', 200],
-      ['me', 'Thank you. Reading them tonight.', 190, 'read'],
-      ['them', 'Three people asked for keyboard shortcuts. Worth noting.', 48],
-    ] },
-  { id: 'tomas', name: 'Tomás Rivera', role: 'Brand Strategist', status: 'offline', seen: 'Last seen 2 hours ago', h: 268, tz: 'America/Mexico_City', loc: 'Mexico City, MX', email: 'tomas@northfield.studio', unread: 0,
-    files: [['Positioning-draft.docx', '240 KB', 'Sep 29', 'DOC']], inbound: [],
-    msgs: [
-      ['me', 'Can you review the positioning draft when you have a moment?', 1700, 'read'],
-      ['them', 'Yes, tomorrow morning. Looks promising.', 1650],
-      ['me', 'Great, thank you.', 1640, 'read'],
-    ] },
-  { id: 'aiko', name: 'Aiko Tanaka', role: 'Motion Designer', status: 'online', h: 330, tz: 'Asia/Tokyo', loc: 'Tokyo, JP', email: 'aiko@northfield.studio', unread: 0,
-    files: [['loading-states.mp4', '12.8 MB', 'Sep 30', 'MP4'], ['easing-curves.json', '6 KB', 'Sep 27', 'JSON']],
-    inbound: ['I sent a slower version too. It feels calmer.'],
-    msgs: [
-      ['them', 'Exported the loading states. Thoughts on the shimmer speed?', 400],
-      ['me', 'Slightly slower, maybe 1.4 seconds.', 380, 'read'],
-      ['them', 'Done. Easing is the same curve we agreed on.', 370],
-    ] },
-  { id: 'priya', name: 'Priya Nair', role: 'Engineering Manager', status: 'offline', seen: 'Last seen yesterday', h: 190, tz: 'Asia/Kolkata', loc: 'Bengaluru, IN', email: 'priya@northfield.studio', unread: 0,
-    files: [['Q4-planning.pdf', '2.0 MB', 'Sep 27', 'PDF']], inbound: [],
-    msgs: [
-      ['them', 'Planning notes for Q4 are ready for comments.', 4400],
-      ['me', 'Will do by Friday.', 4300, 'read'],
-    ] },
-  { id: 'daniel', name: 'Daniel Cho', role: 'Design Systems', status: 'away', h: 120, tz: 'America/Los_Angeles', loc: 'Los Angeles, US', email: 'daniel@northfield.studio', unread: 0,
-    files: [['Token-audit.xlsx', '96 KB', 'Yesterday', 'XLS']],
-    inbound: ['One more thing: the grays are now a single scale.'],
-    msgs: [
-      ['them', 'Token audit is finished. 14 duplicates removed.', 900],
-      ['me', 'Brilliant.', 880, 'read'],
-    ] },
-];
-const people = RAW.map(p => ({
-  ...p, typing: false, replying: false, muted: false, draft: '',
-  messages: p.msgs.map(([from, text, ago, st]) => ({ id: uid(), from, text, t: new Date(NOW - ago * 60000), status: from === 'me' ? (st || 'read') : 'read' })),
-}));
-const REPLIES = ['Got it, thanks.', 'That works for me.', "Makes sense. I'll take a look.", 'Sounds good.', 'Let me check and get back to you.', 'Perfect, thank you.', 'Agreed.'];
+const people = [];
 
 /* ==========================================================================
    STATE + ELEMENTS
@@ -1028,7 +957,7 @@ function lastPreview(c) {
   const text = typeof m.text === 'string' ? m.text : '(unreadable message)';
   return (m.from === 'me' ? 'You: ' : '') + text;
 }
-const statusText = c => c.typing ? 'typing…' : c.status === 'online' ? 'Online' : c.status === 'away' ? 'Away' : c.seen;
+const statusText = c => c.typing ? 'typing…' : c.status === 'online' ? 'Online' : c.seen;
 
 /* ==========================================================================
    THEME — 300ms colour cross-fade via a temporary .theming class
@@ -1135,6 +1064,7 @@ $('#convSearch').addEventListener('input', e => { state.q = e.target.value; rend
    ========================================================================== */
 function renderHeader(animate) {
   const c = cur();
+  if (!c) return;   // no active conversation yet (pre-loadFriends boot window)
   headId.innerHTML = `${avatar(c, 36)}<div class="head-text"><div class="head-name">${esc(c.name)}</div><div class="head-status" id="headStatus"></div></div>`;
   // Re-run the swap animation only when actually switching contacts. Presence
   // / KV poll ticks and the same-conversation reopen call renderHeader()
@@ -1144,7 +1074,8 @@ function renderHeader(animate) {
 }
 function updateStatus(force) {
   const el = $('#headStatus'); if (!el) return;
-  const c = cur(), txt = statusText(c);
+  const c = cur(); if (!c) return;
+  const txt = statusText(c);
   if (force || el.textContent !== txt) { el.textContent = txt; el.classList.toggle('is-typing', c.typing); if (!force) replay(el, 'flip'); }
 }
 function localTime(tz) { try { return new Date().toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
@@ -1164,18 +1095,17 @@ function patchInfoValues(c) {
   if (dot) dot.className = 'dot ' + c.status;
   const state = prof.querySelector('.state');
   if (state) {
-    const label = c.friend ? c.status : (c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : 'Away');
+    const label = c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : c.status;
     state.innerHTML = `<i class="${c.status}"></i>${esc(label)}`;
   }
-  // "N stored" — friend panel only.
-  const stored = [...infoBody.querySelectorAll('small')].find(s => s.textContent === 'Messages');
-  if (stored) { const b = stored.closest('div')?.querySelector('b'); if (b) b.textContent = c.messages.length + ' stored'; }
-  // "Live channel" — friend panel only.
-  const chan = [...infoBody.querySelectorAll('small')].find(s => s.textContent === 'Live channel');
-  if (chan) { const b = chan.closest('div')?.querySelector('b'); if (b) b.textContent = c.p2pState === 'open' ? 'P2P (WebRTC)' : 'via server'; }
+  // "Local time" (friend panel) — the local clock advances, so refresh the
+  // value in place rather than leaving a stale time.
+  const lt = [...infoBody.querySelectorAll('small')].find(s => s.textContent === 'Local time');
+  if (lt) { const b = lt.closest('div')?.querySelector('b'); if (b) b.textContent = localTime(c.tz); }
 }
 function renderInfo(animate) {
   const c = cur();
+  if (!c) return;   // no active conversation yet (pre-loadFriends boot window)
   // Data-refresh path (called by the 1s presence/KV poll and P2P state flips):
   // do NOT rebuild the panel. Reassigning infoBody.innerHTML every tick is
   // what made the panel flicker each second — even with the CSS stagger
@@ -1187,32 +1117,18 @@ function renderInfo(animate) {
     return;
   }
   if (c?.friend) {
+    // Real-friend contact panel. Role is "Friend" (a group-chat feature would
+    // show "Group" later). Details: UUID = the friend's 8-digit id; Local
+    // time = the local wall-clock (no per-user timezone is stored
+    // server-side, so the honest value we can offer is the viewer's clock).
+    // Shared files is a placeholder until file-sharing ships. Mute / Search
+    // chat reuse the same handlers the infoBody click listener already routes
+    // (data-i="mute" -> toggleMute, data-i="search" -> openSearch).
     infoBody.innerHTML = `
       <section class="profile stag" style="--i:0">
         ${avatar(c, 64)}
         <div><div class="name">${esc(c.name)}</div><div class="role">Friend</div>
-        <div class="state"><i class="${c.status}"></i>${esc(c.status)}</div></div>
-      </section>
-      <section class="stag" style="--i:1">
-        <div class="sec-title">Account</div>
-        <div class="kv">
-          <div><small>Username</small><b>${esc(c.name)}</b></div>
-          <div><small>ID</small><b>${esc(c.id)}</b></div>
-          <div><small>Messages</small><b>${c.messages.length} stored</b></div>
-        </div>
-      </section>
-      <section class="stag" style="--i:2">
-        <div class="sec-title">Delivery</div>
-        <div class="kv"><div><small>Live channel</small><b>${c.p2pState === 'open' ? 'P2P (WebRTC)' : 'via server'}</b></div>
-        <div><small>Encryption</small><b>AES-256-GCM</b></div>
-        <div><small>History</small><b>Encrypted in KV</b></div></div>
-      </section>`;
-  } else {
-    infoBody.innerHTML = `
-      <section class="profile stag" style="--i:0">
-        ${avatar(c, 64)}
-        <div><div class="name">${esc(c.name)}</div><div class="role">${esc(c.role)}</div>
-        <div class="state"><i class="${c.status}"></i>${esc(c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : 'Away')}</div></div>
+        <div class="state"><i class="${c.status}"></i>${esc(c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : c.status)}</div></div>
       </section>
       <section class="btn-row stag" style="--i:1">
         <button class="btn hv" data-i="mute">${ic('bell', 15)}<span>${c.muted ? 'Unmute' : 'Mute'}</span></button>
@@ -1220,11 +1136,11 @@ function renderInfo(animate) {
       </section>
       <section class="stag" style="--i:2">
         <div class="sec-title">Details</div>
-        <div class="kv"><div><small>Email</small><b>${esc(c.email)}</b></div><div><small>Local time</small><b>${localTime(c.tz)}, ${esc(c.loc)}</b></div></div>
+        <div class="kv"><div><small>UUID</small><b>${esc(c.id)}</b></div><div><small>Local time</small><b>${localTime(c.tz)}</b></div></div>
       </section>
       <section class="stag" style="--i:3">
-        <div class="sec-title">Shared files <span>${(c.files || []).length}</span></div>
-        <div class="files">${(c.files || []).map(f => `<button class="file hv"><span class="file-ic">${f[3]}</span><span class="file-t"><b>${esc(f[0])}</b><span>${f[1]}, ${f[2]}</span></span></button>`).join('')}</div>
+        <div class="sec-title">Shared files <span>0</span></div>
+        <div class="files"><div class="files-empty">No shared files yet.</div></div>
       </section>`;
   }
   // Re-run the stagger-in animation ONLY when switching contacts / opening the
@@ -1249,11 +1165,6 @@ messages.addEventListener('scroll', () => {
 }, { passive: true });
 toBottom.addEventListener('click', () => scrollBottom(true));
 
-function skeleton() {
-  const rows = [['l', 52, 44], ['l', 36, 36], ['r', 44, 40], ['l', 60, 60], ['r', 30, 36], ['r', 50, 52]];
-  messages.innerHTML = `<div class="thread sk-thread fade-in" aria-hidden="true">${rows.map(([s, w, h]) => `<div class="sk-row ${s}"><div class="sk" style="width:${w}%;height:${h}px"></div></div>`).join('')}</div>`;
-  thread = null;
-}
 function bubbleHTML(m) {
   if (m.recalled) return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span></div>`;
   // The P2P wire sends {id, text, at}; a malformed payload could carry a
@@ -1288,8 +1199,8 @@ function renderMessages() {
   const c = cur();
   const t = document.createElement('div'); t.className = 'thread fade-in';
   thread = t;
-  if (!c.messages.length) {
-    t.innerHTML = `<div class="empty"><b>No messages yet</b>${c.friend ? 'Start the conversation with ' + esc(c.name.split(' ')[0]) + '.' : 'Say hello to ' + esc(c.name.split(' ')[0]) + '.'}</div>`;
+  if (!c || !c.messages.length) {
+    t.innerHTML = `<div class="empty"><b>No messages yet</b>${c ? 'Start the conversation with ' + esc(c.name.split(' ')[0]) + '.' : ''}</div>`;
   } else {
     let last = null;
     c.messages.forEach(m => { if (!last || !sameDay(last.t, m.t)) t.appendChild(dayEl(m.t)); t.appendChild(msgEl(m)); last = m; });
@@ -1313,7 +1224,7 @@ function appendMessage(m, { delay = 0 } = {}) {
   // A message just filled a previously-empty conversation: if the peer is
   // still typing, the three-dot row can now live on the real thread, so show
   // it (it was suppressed while the pane was on the "No messages" placeholder).
-  if (cur().typing) showTypingRow();
+  if (cur()?.typing) showTypingRow();
 }
 /* Drop the .enter class once finished so no will-change lingers */
 messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
@@ -1342,7 +1253,7 @@ function setTyping(c, on) {
   if (!c.messages.length) { hideTypingRow(true); return; }
   on ? showTypingRow() : hideTypingRow();
 }
-function syncTyping() { const c = cur(); if (c.typing && c.messages.length) showTypingRow(); }
+function syncTyping() { const c = cur(); if (c && c.typing && c.messages.length) showTypingRow(); }
 
 /* ==========================================================================
    OPEN CONVERSATION
@@ -1354,7 +1265,7 @@ function openConversation(id, { initial = false } = {}) {
   // flow) before `loadFriends` resolves — in that case ensure the friend
   // object is present so the rest of the flow (sendToFriend, loadHistory,
   // ensureP2P) doesn't silently no-op.
-  if (id !== 'mira' && !byId(id) && /^\d{8}$/.test(id)) {
+  if (!byId(id) && /^\d{8}$/.test(id)) {
     addFriendToList({ id, username: 'User ' + id });
   }
   // Re-opening the SAME conversation: refresh the header, the info panel, and
@@ -1415,9 +1326,6 @@ function openConversation(id, { initial = false } = {}) {
     // the last few their-side messages so they flip to a double tick.
     const unreadFromThem = c.messages.filter(x => x.from === 'them').slice(-20).map(x => x.id);
     if (unreadFromThem.length) sendReadReceipt(c.id, 'read', unreadFromThem);
-  } else {
-    skeleton();
-    setTimeout(() => { renderMessages(); }, initial ? 700 : 420);   // demo contacts keep the skeleton
   }
   if (!initial && !mqSb.matches) setPanel('sidebar', false);
   $('#toBottom').classList.remove('show');
@@ -1468,64 +1376,13 @@ btnSend.addEventListener('click', () => { send(); input.focus(); });
 function send() {
   const text = input.value.trim(); if (!text) return;
   const c = cur();
-  // Friend conversation: route through the P2P/KV path instead of the mock reply.
+  // Only real friends exist in the conversation list now (mock demo contacts
+  // were removed), so sending always routes through the P2P/KV path.
   if (c?.friend) { sendToFriend(c); return; }
-  const m = { id: uid(), from: 'me', text, t: new Date(), status: 'sent' };
-  c.messages.push(m);
-  appendMessage(m);
-  input.value = ''; autosize();
-  patchRow(c);
-  requestAnimationFrame(() => scrollBottom(true));       // smooth scroll to newest
-  simulateDelivery(c, m);
 }
 function setStatus(c, m, s) {
   m.status = s;
   if (c.id === state.active && thread) { const t = thread.querySelector(`[data-mid="${m.id}"] .tick`); if (t) t.dataset.s = s; }
-}
-/* Receipts: sent -> delivered (500ms) -> read (online 1.3s / away 4.2s), then a reply */
-function simulateDelivery(c, m) {
-  setTimeout(() => setStatus(c, m, 'delivered'), 500);
-  if (c.status === 'offline') return;
-  const readAt = c.status === 'online' ? 1300 : 4200;
-  setTimeout(() => setStatus(c, m, 'read'), readAt);
-  setTimeout(() => startReply(c), readAt + (c.status === 'online' ? 500 : 1500));
-}
-function startReply(c) {
-  if (c.replying) return; c.replying = true;
-  setTyping(c, true);
-  const n = Math.random() < 0.4 ? 2 : 1;
-  setTimeout(() => {
-    setTyping(c, false); if (c.id === state.active) hideTypingRow(true);
-    const lines = []; while (lines.length < n) { const l = pick(REPLIES); if (!lines.includes(l)) lines.push(l); }
-    receive(c.id, lines); c.replying = false;
-  }, 1500 + Math.random() * 900);
-}
-/* Receive: bubbles enter with a 60ms stagger; inactive chats get an unread badge pulse */
-function receive(id, lines) {
-  const c = byId(id), isActive = id === state.active, near = isActive && thread && nearBottom();
-  lines.forEach((text, i) => {
-    const m = { id: uid(), from: 'them', text, t: new Date(), status: 'read' };
-    c.messages.push(m);
-    if (isActive) appendMessage(m, { delay: i * 60 });
-  });
-  if (!isActive) c.unread += lines.length;
-  patchRow(c, { pulse: !isActive && !c.muted });
-  if (isActive) { if (near) requestAnimationFrame(() => scrollBottom(true)); else toBottom.classList.add('show'); }
-}
-/* Background traffic from other contacts */
-function scheduleIncoming(first) {
-  setTimeout(() => {
-    // Only the mock demo contacts have canned `inbound` lines. Real friends
-    // have no `inbound` field and get their messages over P2P/KV, so the
-    // filter must not touch them (this used to crash on p.inbound.length).
-    const pool = people.filter(p => p.inbound?.length);
-    if (pool.length) {
-      const c = pick(pool), line = c.inbound.shift();
-      if (c.id === state.active) { setTyping(c, true); setTimeout(() => { setTyping(c, false); hideTypingRow(true); receive(c.id, [line]); }, 1400); }
-      else receive(c.id, [line]);
-    }
-    scheduleIncoming(false);
-  }, first ? 6500 : 12000 + Math.random() * 9000);
 }
 
 /* ==========================================================================
@@ -1535,7 +1392,8 @@ messages.addEventListener('click', e => {
   const act = e.target.closest('[data-act]');
   const row = e.target.closest('.msg[data-mid]');
   if (act && row) {
-    const m = cur().messages.find(x => x.id === row.dataset.mid);
+    const m = cur()?.messages.find(x => x.id === row.dataset.mid);
+    if (!m) return;
     if (act.dataset.act === 'copy') copyText(m.text); else recall(m, row);
     row.classList.remove('tap'); return;
   }
@@ -1576,7 +1434,7 @@ function runSearch() {
   if (!thread) return;
   const q = csInput.value.trim().toLowerCase(); hits = [];
   $$('.msg[data-mid]', thread).forEach(r => {
-    const m = cur().messages.find(x => x.id === r.dataset.mid);
+    const m = cur()?.messages.find(x => x.id === r.dataset.mid);
     const hit = !!q && m && !m.recalled && m.text.toLowerCase().includes(q);
     r.classList.toggle('dim', !!q && !hit); r.classList.remove('current'); if (hit) hits.push(r);
   });
@@ -2119,8 +1977,8 @@ function setP2pState(peerId, p2pState) {
 
 /* ---- Friend list state ----
    We keep friends in `people` with a `friend:true` flag and `friendId`.
-   renderList() will show them alongside the mock contacts; the mock data
-   stays as-is for now (this is the "stage 2" you described).
+   renderList() shows them in the conversation list; messages arrive over
+   P2P/KV and are archived to KV (the mock demo contacts were removed).
 */
 const reqs = { mine: [], incoming: [] }; // {uuid, username, status}
 
@@ -2131,8 +1989,8 @@ function addFriendToList(peer) {
   const c = {
     id: peer.id, friendId: peer.id, friend: true,
     name: peer.username || 'User ' + peer.id,
-    role: 'Friend', status: 'offline', seen: 'Offline', h, unread: 0,
-    typing: false, replying: false, muted: false, draft: '',
+    status: 'offline', seen: 'Offline', h, unread: 0,
+    typing: false, muted: false, draft: '',
     p2pState: 'closed',
     messages: [],
   };
@@ -2156,6 +2014,11 @@ async function loadFriends() {
     }
     renderList();
     renderRequests();
+    // Land on the first friend at boot (only if the user hasn't already chosen
+    // a conversation). Replaces the removed mock "open mira" initial state.
+    if (!state.active && (r.data.friends || []).length) {
+      openConversation(r.data.friends[0].id, { initial: true });
+    }
     // Warm a live P2P room for up to the first 5 friends so real-time chat
     // works regardless of who sends first (both sides are already in the
     // room). More than that would open dozens of Nostr relay connections at
@@ -2553,11 +2416,10 @@ function startApp() {
   app.dataset.info = mqInfo.matches ? 'open' : 'closed';
   syncButtons();
   listSkeleton();
-  openConversation('mira', { initial: true });
   setTimeout(() => { renderList(); renderRequests(); $('#convList').classList.add('fade-in'); }, 700);
-  scheduleIncoming(true);
   // Load my friends + pending requests so the list and the "Friend requests"
-  // group populate. Runs in the background; no UI blocks on it.
+  // group populate. When the list resolves, the first friend is opened so the
+  // pane doesn't sit on the skeleton. Runs in the background; no UI blocks.
   loadFriends();
   // Presence heartbeat + KV-delivery fallback: one beat/sec (so other devices
   // see me online) and one KV-sync + presence poll/sec (so I pick up any
