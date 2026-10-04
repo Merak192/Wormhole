@@ -1310,6 +1310,10 @@ function appendMessage(m, { delay = 0 } = {}) {
   if (!prev || !sameDay(new Date(+prev.dataset.t), m.t)) thread.insertBefore(dayEl(m.t), $('.typing-row', thread));
   thread.insertBefore(msgEl(m, { enter: true, delay }), $('.typing-row', thread));
   markGroups();
+  // A message just filled a previously-empty conversation: if the peer is
+  // still typing, the three-dot row can now live on the real thread, so show
+  // it (it was suppressed while the pane was on the "No messages" placeholder).
+  if (cur().typing) showTypingRow();
 }
 /* Drop the .enter class once finished so no will-change lingers */
 messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
@@ -1330,9 +1334,15 @@ function hideTypingRow(immediate) {
 function setTyping(c, on) {
   c.typing = on;
   if (c.id !== state.active) return;
-  updateStatus(); on ? showTypingRow() : hideTypingRow();
+  updateStatus();
+  // An empty conversation has no message thread to hang the three-dot row on
+  // (it would wedge under the "No messages yet" placeholder). When there are
+  // no messages yet, signal typing only via the header ("typing…") and skip
+  // the bubble; once a message exists, show/hide the row normally.
+  if (!c.messages.length) { hideTypingRow(true); return; }
+  on ? showTypingRow() : hideTypingRow();
 }
-function syncTyping() { if (cur().typing) showTypingRow(); }
+function syncTyping() { const c = cur(); if (c.typing && c.messages.length) showTypingRow(); }
 
 /* ==========================================================================
    OPEN CONVERSATION
