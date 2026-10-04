@@ -1,0 +1,2439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Messages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Resolve theme before first paint (no flash). Storage reads are guarded. -->
+<script>
+  try {
+    var t = localStorage.getItem('chat-theme');
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+
+<style>
+/* ==========================================================================
+   1. TOKENS
+   One easing curve for everything. Durations: 160/220 micro, 320 messages, 380 panels.
+   ========================================================================== */
+:root {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* the "out" curve used everywhere */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* send-button release only */
+  --t-fast: 160ms;
+  --t-base: 220ms;
+  --t-msg: 320ms;
+  --t-slow: 380ms;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 18px;
+
+  /* Light */
+  --bg: #F3F3F1;
+  --side: #F7F7F5;
+  --surface: #FFFFFF;
+  --sunken: #F2F2EF;
+  --text: #161616;
+  --text-2: #5C5C57;
+  --text-3: #9A9A93;
+  --line: #ECECE8;
+  --line-strong: #DEDED9;
+  --hover: rgba(20, 20, 18, 0.05);
+  --accent: #2F5D50;
+  --accent-soft: rgba(47, 93, 80, 0.10);
+  --on-accent: #FFFFFF;
+  --bubble-in: #F2F2EF;
+  --bubble-self: #2F5D50;
+  --bubble-self-fg: #FFFFFF;
+  --meta-self: rgba(255, 255, 255, 0.68);
+  --tick-read: #CDEBDD;
+  --online: #4E8F76;
+  --away: #C4A25C;
+  --danger: #B4443A;
+  --sk: #ECECE8;
+  --sk-hi: rgba(255, 255, 255, 0.7);
+  --scroll: rgba(0, 0, 0, 0.18);
+  --av-bg: 90%; --av-fg: 32%;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 14px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+
+/* Dark — follows the system unless the user picked light explicitly */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0A0A0A; --side: #0F0F0F; --surface: #141414; --sunken: #1A1A19;
+    --text: #ECECEA; --text-2: #A3A39E; --text-3: #6B6B66;
+    --line: #232321; --line-strong: #2F2F2C;
+    --hover: rgba(255, 255, 255, 0.055);
+    --accent: #86B8A2; --accent-soft: rgba(134, 184, 162, 0.13); --on-accent: #0B1A14;
+    --bubble-in: #1E1E1C; --bubble-self: #2A5345; --bubble-self-fg: #EAF4EF;
+    --meta-self: rgba(234, 244, 239, 0.6); --tick-read: #9ED4BB;
+    --online: #6FB496; --away: #C9A55B; --danger: #E0786C;
+    --sk: #1E1E1C; --sk-hi: rgba(255, 255, 255, 0.05);
+    --scroll: rgba(255, 255, 255, 0.2);
+    --av-bg: 20%; --av-fg: 78%;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0A0A0A; --side: #0F0F0F; --surface: #141414; --sunken: #1A1A19;
+  --text: #ECECEA; --text-2: #A3A39E; --text-3: #6B6B66;
+  --line: #232321; --line-strong: #2F2F2C;
+  --hover: rgba(255, 255, 255, 0.055);
+  --accent: #86B8A2; --accent-soft: rgba(134, 184, 162, 0.13); --on-accent: #0B1A14;
+  --bubble-in: #1E1E1C; --bubble-self: #2A5345; --bubble-self-fg: #EAF4EF;
+  --meta-self: rgba(234, 244, 239, 0.6); --tick-read: #9ED4BB;
+  --online: #6FB496; --away: #C9A55B; --danger: #E0786C;
+  --sk: #1E1E1C; --sk-hi: rgba(255, 255, 255, 0.05);
+  --scroll: rgba(255, 255, 255, 0.2);
+  --av-bg: 20%; --av-fg: 78%;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================================================
+   2. BASE
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.45;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+input, textarea { font: inherit; color: inherit; }
+svg { display: block; }
+p { margin: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+/* Theme cross-fade (300ms). Applied for ~360ms during a switch only. */
+html.theming, html.theming *, html.theming *::before, html.theming *::after {
+  transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease,
+              fill 300ms ease, stroke 300ms ease, box-shadow 300ms ease !important;
+}
+
+/* Minimal scrollbar that fades in on hover */
+.scroll {
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: transparent transparent;
+  transition: scrollbar-color 300ms var(--ease);
+}
+.scroll:hover { scrollbar-color: var(--scroll) transparent; }
+@supports not (scrollbar-color: auto) {
+  .scroll::-webkit-scrollbar { width: 10px; }
+  .scroll::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; transition: background-color 300ms var(--ease); }
+  .scroll:hover::-webkit-scrollbar-thumb { background-color: var(--scroll); }
+}
+
+/* Shared hover tint: a pseudo-element whose OPACITY fades (no colour animation) */
+.hv { position: relative; isolation: isolate; }
+.hv::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  background: var(--hover); opacity: 0; transition: opacity var(--t-fast) var(--ease);
+}
+.hv:hover::before { opacity: 1; }
+
+.icon-btn {
+  width: 34px; height: 34px; border-radius: var(--r-md);
+  display: grid; place-items: center; color: var(--text-2); flex: none;
+  transition: transform 320ms var(--spring), color var(--t-fast) var(--ease);
+}
+.icon-btn:hover { color: var(--text); }
+.icon-btn:active { transform: scale(0.94); transition-duration: 80ms; }
+.icon-btn[aria-pressed="true"] { color: var(--accent); }
+.icon-btn[aria-pressed="true"]::before { opacity: 1; background: var(--accent-soft); }
+
+/* ==========================================================================
+   3. AVATAR + PRESENCE
+   ========================================================================== */
+.av {
+  --ring: var(--surface);
+  position: relative; flex: none;
+  width: var(--s, 40px); height: var(--s, 40px); border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: calc(var(--s, 40px) * 0.34); font-weight: 500; letter-spacing: 0;
+  background: hsl(var(--h) 12% var(--av-bg));
+  color: hsl(var(--h) 22% var(--av-fg));
+}
+.dot {
+  position: absolute; right: -1px; bottom: -1px;
+  width: max(9px, calc(var(--s, 40px) * 0.27)); height: max(9px, calc(var(--s, 40px) * 0.27));
+  border-radius: 50%; box-shadow: 0 0 0 2px var(--ring);
+}
+.dot.online { background: var(--online); }
+.dot.away { background: var(--away); }
+.dot.offline { background: var(--ring); border: 2px solid var(--text-3); }
+
+/* ==========================================================================
+   4. LAYOUT — mobile-first overlays, docked from 761px (sidebar) / 1100px (info)
+   ========================================================================== */
+.app { display: flex; height: 100%; background: var(--surface); position: relative; }
+
+/* ---- Sidebar ---- */
+.sidebar {
+  --ring: var(--side);
+  position: fixed; inset: 0; width: 100%; z-index: 25;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--side); display: flex; flex-direction: column; min-height: 0;
+  transform: translateX(-100%); visibility: hidden;
+  transition: transform var(--t-slow) var(--ease), visibility 0s linear var(--t-slow);
+}
+.app[data-sidebar="open"] .sidebar { transform: none; visibility: visible; transition-delay: 0s; }
+.sidebar .av { --ring: var(--side); }
+
+.sb-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 14px 12px 20px; }
+.sb-head h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+.btn-sb-collapse { display: none; }
+
+.sb-search {
+  display: flex; align-items: center; gap: 8px; height: 36px; margin: 0 16px 8px; padding: 0 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text-3);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease);
+}
+.sb-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); color: var(--text-2); }
+.sb-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 13.5px; }
+.sb-search input::placeholder { color: var(--text-3); }
+.kbd { display: none; font-size: 11px; color: var(--text-3); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+
+.sb-list { flex: 1; min-height: 0; padding: 4px 0 12px; }
+.conv-wrap { position: relative; }
+/* One element, moved with translateY — the "shared layout" active indicator */
+.indicator {
+  position: absolute; left: 0; top: 0; width: 3px; height: 24px; border-radius: 0 3px 3px 0;
+  background: var(--accent); opacity: 0;
+  transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
+}
+.empty-note { padding: 28px 24px; color: var(--text-3); font-size: 13px; text-align: center; }
+
+.conv {
+  position: relative; isolation: isolate;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  width: calc(100% - 16px); height: 68px; margin: 0 8px; padding: 0 12px; border-radius: var(--r-lg);
+  transition: transform var(--t-base) var(--ease);
+}
+/* Hover: card background + soft shadow bloom fade in (opacity only), row lifts 1px */
+.conv::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: var(--surface); box-shadow: var(--shadow-sm);
+  opacity: 0; transition: opacity var(--t-base) var(--ease);
+}
+.conv:hover { transform: translateY(-1px); }
+.conv:hover::before, .conv.active::before { opacity: 1; }
+.conv:active { transform: translateY(0); }
+.conv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.conv-top, .conv-bot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.conv-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv.unread .conv-name, .conv.active .conv-name { font-weight: 600; }
+.conv-time { font-size: 11.5px; color: var(--text-3); flex: none; }
+.conv-last { font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv.unread .conv-last { color: var(--text); }
+
+/* Unread badge: scales in, pulses when a new message lands, then settles */
+.badge {
+  position: relative; flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600;
+  display: grid; place-items: center; opacity: 0; transform: scale(0.6);
+  transition: opacity var(--t-base) var(--ease), transform 320ms var(--spring);
+}
+.badge:not([data-n="0"]) { opacity: 1; transform: none; }
+.badge::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--accent);
+  opacity: 0; z-index: -1; pointer-events: none;
+}
+.badge.pulse { animation: badgePop 520ms var(--ease); }
+.badge.pulse::after { animation: badgeRing 900ms var(--ease); }
+@keyframes badgePop { 0% { transform: scale(1); } 35% { transform: scale(1.22); } 100% { transform: scale(1); } }
+@keyframes badgeRing { 0% { opacity: 0.45; transform: scale(1); } 100% { opacity: 0; transform: scale(2.1); } }
+
+.sb-foot { display: flex; align-items: center; gap: 8px; padding: 12px 14px 12px 16px; border-top: 1px solid var(--line); }
+.sb-foot .me { flex: 1; min-width: 0; line-height: 1.25; }
+.sb-foot .me b { display: block; font-size: 13.5px; font-weight: 500; }
+.sb-foot .me span { font-size: 12px; color: var(--text-3); }
+
+/* "Add friend" plus button: same icon-btn grammar, accent on hover to signal primary */
+.btn-add { color: var(--accent); }
+.btn-add::before { background: var(--accent-soft); }
+
+/* Theme toggle: sun and moon swap with rotate + scale + opacity */
+.theme-btn .ic { grid-area: 1 / 1; transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease); }
+.theme-btn .moon { opacity: 0; transform: rotate(-70deg) scale(0.6); }
+:root[data-theme="dark"] .theme-btn .sun { opacity: 0; transform: rotate(70deg) scale(0.6); }
+:root[data-theme="dark"] .theme-btn .moon { opacity: 1; transform: none; }
+
+/* ---- Chat ---- */
+.chat { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); position: relative; }
+.chat.settle { animation: settle var(--t-slow) var(--ease); }
+@keyframes settle { from { opacity: 0.5; transform: translateX(var(--sx, 10px)); } to { opacity: 1; transform: none; } }
+
+.chat-head {
+  height: 64px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px;
+  border-bottom: 1px solid var(--line); position: relative; z-index: 3; background: var(--surface);
+}
+.btn-sb-open { display: grid; }
+.head-id { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding-left: 2px; }
+.head-id.swap { animation: fadeUp var(--t-msg) var(--ease) backwards; }
+.head-text { min-width: 0; }
+.head-name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.head-status { font-size: 12px; color: var(--text-3); height: 16px; }
+.head-status.flip { animation: fadeUp var(--t-base) var(--ease); }
+.head-status.is-typing { color: var(--accent); }
+.head-actions { display: flex; align-items: center; gap: 2px; }
+
+.chat-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.messages { flex: 1; min-height: 0; padding: 20px 16px 8px; }
+.thread { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 3px; }
+.fade-in { animation: fadeUp var(--t-slow) var(--ease) backwards; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.day { align-self: center; margin: 22px 0 10px; font-size: 12px; font-weight: 500; color: var(--text-3); transition: opacity var(--t-base) var(--ease); }
+.day:first-child { margin-top: 0; }
+.day.dim { opacity: 0.3; }
+.empty { align-self: center; margin-top: 18vh; text-align: center; color: var(--text-3); }
+.empty b { display: block; color: var(--text); font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+
+/* Message row */
+.msg { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: calc(100% - 8px); transition: opacity var(--t-base) var(--ease); }
+.msg.self { align-self: flex-end; flex-direction: row-reverse; }
+.msg.other { align-self: flex-start; }
+.msg.gap { margin-top: 10px; }
+.msg.dim { opacity: 0.25; }
+
+/* SEND / RECEIVE: fade + 8px slide up + scale .96 -> 1. Origin is the sender's corner. */
+.msg.enter { animation: msgIn var(--t-msg) var(--ease) both; animation-delay: var(--d, 0ms); will-change: transform, opacity; }
+.msg.self.enter { transform-origin: 100% 100%; }
+.msg.other.enter { transform-origin: 0 100%; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(8px) scale(0.96); } to { opacity: 1; transform: none; } }
+.msg.leaving { animation: msgOut 200ms var(--ease) forwards; }
+@keyframes msgOut { to { opacity: 0; transform: translateY(2px) scale(0.96); } }
+
+.bubble {
+  position: relative; max-width: 520px; padding: 8px 12px; border-radius: var(--r-lg);
+  font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease), box-shadow var(--t-base) var(--ease);
+}
+.txt { white-space: pre-wrap; }
+.self .bubble { background: var(--bubble-self); color: var(--bubble-self-fg); border-bottom-right-radius: 5px; --meta: var(--meta-self); }
+.other .bubble { background: var(--bubble-in); border-bottom-left-radius: 5px; --meta: var(--text-3); }
+.meta { float: right; margin: 8px 0 -3px 12px; height: 12px; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1; color: var(--meta); user-select: none; }
+.msg.current .bubble { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Read receipts: second tick slides in on delivered, turns mint on read */
+.tick { color: var(--meta); transition: color var(--t-base) var(--ease); }
+.tick .t2 { opacity: 0; transform: translateX(-3px); transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+.tick:not([data-s="sent"]) .t2 { opacity: 1; transform: none; }
+.tick[data-s="read"] { color: var(--tick-read); }
+
+/* Recalled state */
+.bubble.recalled { background: transparent !important; color: var(--text-3) !important; border: 1px dashed var(--line-strong); font-size: 13px; font-style: italic; }
+.bubble.recalling { opacity: 0; transform: scale(0.96); }
+
+/* Hover actions (copy / recall). Also revealed on tap for touch devices. */
+.msg-actions {
+  display: flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); box-shadow: var(--shadow-sm);
+  opacity: 0; transform: translateX(var(--ax, 6px)) scale(0.96); pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-base) var(--ease);
+}
+.msg.self .msg-actions { --ax: 6px; }
+.msg.other .msg-actions { --ax: -6px; }
+.msg:hover .msg-actions, .msg.tap .msg-actions, .msg:focus-within .msg-actions { opacity: 1; transform: none; pointer-events: auto; }
+.msg-actions button { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); }
+.msg-actions button:hover { color: var(--text); }
+
+/* Typing indicator: three dots, offset delays -> soft wave */
+.dots { display: flex; gap: 4px; align-items: center; height: 18px; padding: 0 2px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: wave 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes wave { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+.typing-row .bubble { padding: 9px 12px; }
+
+/* Skeleton shimmer (transform-only sweep) */
+.sk { position: relative; overflow: hidden; background: var(--sk); border-radius: 8px; }
+.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--sk-hi), transparent); transform: translateX(-100%); animation: shimmer 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+.sk-row { display: flex; }
+.sk-row.r { justify-content: flex-end; }
+.sk-row .sk { border-radius: var(--r-lg); }
+.sk-thread { gap: 12px; }
+.conv-sk { display: flex; align-items: center; gap: 12px; height: 68px; margin: 0 8px; padding: 0 12px; }
+.conv-sk .av-sk { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+.sk-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+/* Scroll-to-latest pill */
+.to-bottom {
+  position: absolute; left: 50%; bottom: 12px; height: 32px; padding: 0 12px 0 10px; display: flex; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 16px; box-shadow: var(--shadow-sm);
+  font-size: 12.5px; font-weight: 500; color: var(--text-2);
+  opacity: 0; transform: translate(-50%, 8px) scale(0.96); pointer-events: none;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
+}
+.to-bottom.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+
+/* In-chat search */
+.csearch {
+  position: absolute; top: 72px; right: 12px; left: 12px; z-index: 4; height: 42px; padding: 0 6px 0 12px;
+  display: flex; align-items: center; gap: 8px; margin-left: auto; max-width: 400px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top right; visibility: hidden; pointer-events: none;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease), visibility 0s linear var(--t-base);
+}
+.csearch.open { opacity: 1; transform: none; visibility: visible; pointer-events: auto; transition-delay: 0s; }
+.csearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 13.5px; }
+.csearch .count { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+
+/* Composer */
+.composer { padding: 8px 12px 14px; flex: none; }
+.composer-box {
+  max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow-xs);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease);
+}
+.composer-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.composer textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; line-height: 22px; max-height: 140px; padding: 7px 0; font-size: 14.5px; }
+.composer textarea::placeholder { color: var(--text-3); }
+/* Send: press = scale .96, release = springy return */
+.send {
+  width: 36px; height: 36px; border-radius: 12px; flex: none; display: grid; place-items: center;
+  background: var(--accent); color: var(--on-accent);
+  transition: transform 360ms var(--spring), opacity var(--t-base) var(--ease);
+}
+.send:active:not(:disabled) { transform: scale(0.96); transition-duration: 70ms; }
+.send:disabled { opacity: 0.28; transform: scale(0.9); cursor: default; }
+
+/* ---- Info panel ---- */
+.info {
+  --ring: var(--surface);
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(360px, 100%);
+  padding-top: env(safe-area-inset-top, 0px);
+  display: flex; flex-direction: column; min-height: 0; background: var(--surface);
+  border-left: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  transform: translateX(100%); visibility: hidden;
+  transition: transform var(--t-slow) var(--ease), visibility 0s linear var(--t-slow);
+}
+.app[data-info="open"] .info { transform: none; visibility: visible; transition-delay: 0s; }
+.info-head { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 20px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.info-body { flex: 1; min-height: 0; padding: 24px 20px 28px; display: flex; flex-direction: column; gap: 26px; }
+/* Content staggers in (50ms steps) every time the panel opens or the contact changes */
+.info.play .stag { animation: fadeUp var(--t-slow) var(--ease) backwards; animation-delay: calc(var(--i, 0) * 50ms + 80ms); }
+.profile { display: flex; flex-direction: column; gap: 14px; }
+.profile .name { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.profile .role { font-size: 13px; color: var(--text-2); margin-top: 3px; }
+.profile .state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-3); margin-top: 8px; }
+.profile .state i { width: 7px; height: 7px; border-radius: 50%; }
+.profile .state i.online { background: var(--online); } .profile .state i.away { background: var(--away); } .profile .state i.offline { background: var(--text-3); }
+.btn-row { display: flex; gap: 8px; }
+.btn {
+  flex: 1; height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-md); font-size: 13px; font-weight: 500;
+  transition: transform 320ms var(--spring);
+}
+.btn:active { transform: scale(0.97); transition-duration: 80ms; }
+.sec-title { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; font-weight: 500; color: var(--text-2); margin-bottom: 10px; }
+.sec-title span { color: var(--text-3); font-weight: 400; }
+.kv { display: flex; flex-direction: column; gap: 12px; }
+.kv div { display: flex; flex-direction: column; gap: 1px; }
+.kv small { font-size: 12px; color: var(--text-3); }
+.kv b { font-weight: 400; font-size: 13.5px; overflow-wrap: anywhere; }
+.files { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
+.file { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: var(--r-md); text-align: left; width: 100%; }
+.file-ic { width: 36px; height: 36px; flex: none; border-radius: 9px; display: grid; place-items: center; background: var(--sunken); color: var(--text-2); font-size: 9.5px; font-weight: 600; letter-spacing: 0.02em; }
+.file-t { min-width: 0; line-height: 1.3; }
+.file-t b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-t span { font-size: 12px; color: var(--text-3); }
+
+/* Scrim behind the overlay info panel: blur layer is constant, only opacity animates */
+.scrim {
+  position: fixed; inset: 0; z-index: 19; background: rgba(10, 10, 10, 0.22);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  opacity: 0; pointer-events: none; transition: opacity var(--t-slow) var(--ease);
+}
+.app[data-info="open"] .scrim { opacity: 1; pointer-events: auto; }
+
+/* ---- Dropdown ---- */
+.menu {
+  position: fixed; z-index: 30; min-width: 212px; padding: 6px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: scale(0.96) translateY(-4px); transform-origin: top right; visibility: hidden; pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-base) var(--ease), visibility 0s linear var(--t-base);
+}
+.menu.open { opacity: 1; transform: none; visibility: visible; pointer-events: auto; transition-delay: 0s; }
+.mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; text-align: left; }
+.mi svg { color: var(--text-2); }
+.mi.danger, .mi.danger svg { color: var(--danger); }
+.msep { height: 1px; background: var(--line); margin: 6px 4px; }
+
+/* ---- Modal ---- */
+.modal-layer { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px; visibility: hidden; pointer-events: none; transition: visibility 0s linear var(--t-slow); }
+.modal-layer.open { visibility: visible; pointer-events: auto; transition-delay: 0s; }
+.modal-backdrop {
+  position: absolute; inset: 0; background: rgba(10, 10, 10, 0.3);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.modal {
+  position: relative; width: min(400px, 100%); padding: 24px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: scale(0.96) translateY(6px);
+  transition: opacity var(--t-base) var(--ease), transform var(--t-slow) var(--ease);
+}
+.modal-layer.open .modal-backdrop { opacity: 1; }
+.modal-layer.open .modal { opacity: 1; transform: none; }
+.modal h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+.modal p { color: var(--text-2); font-size: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.modal-actions .btn { flex: none; height: 36px; padding: 0 16px; }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+.btn.danger { background: var(--danger); border-color: transparent; color: #fff; }
+
+/* ---- Requests group in the sidebar (above the conversation list) ---- */
+.req-group { margin: 2px 0 8px; }
+.req-head { padding: 4px 20px 2px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+.req {
+  position: relative; isolation: isolate;
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  width: calc(100% - 16px); margin: 0 8px; padding: 8px 10px; border-radius: var(--r-lg);
+  transition: transform var(--t-base) var(--ease);
+}
+.req::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--surface); box-shadow: var(--shadow-xs); opacity: 0; transition: opacity var(--t-base) var(--ease); }
+.req:hover::before { opacity: 1; }
+.req-body { flex: 1; min-width: 0; }
+.req-name { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.req-meta { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.req-in { animation: fadeUp var(--t-slow) var(--ease) backwards; }
+
+/* Accept / decline: small pill buttons that fill on hover, scale on press.
+   Accept leans on the accent, decline on the danger token — so the two read
+   as a clear action pair instead of two identical squares. */
+.req-acts { display: flex; gap: 5px; flex: none; }
+.req-btn {
+  height: 26px; min-width: 26px; padding: 0 8px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  font-size: 12px; font-weight: 500; color: var(--text-2);
+  transition: transform 320ms var(--spring), background var(--t-fast) var(--ease),
+             color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), opacity var(--t-base) var(--ease);
+}
+.req-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--hover); }
+.req-btn:active { transform: scale(0.92); transition-duration: 80ms; }
+.req-btn.ok { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+.req-btn.ok:hover { filter: brightness(1.06); background: var(--accent); }
+.req-btn.no { width: 26px; padding: 0; }
+.req-btn.no:hover { border-color: var(--danger); color: var(--danger); background: rgba(180, 68, 58, 0.08); }
+.req-btn:disabled { opacity: 0.5; cursor: default; }
+/* "You requested" — a quiet waiting pill with a soft pulse, no actions */
+.req-wait {
+  height: 26px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center;
+  background: var(--sunken); color: var(--text-2); font-size: 12px; font-weight: 500;
+}
+.req-wait::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--away); margin-right: 6px;
+  animation: waitPulse 1.4s var(--ease) infinite;
+}
+@keyframes waitPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.req.leaving { opacity: 0; transform: translateX(14px) scale(0.97); transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+/* "you requested" — no action buttons, just a quiet "waiting" state */
+.req.waiting { cursor: default; }
+.req.waiting .req-meta { color: var(--away); }
+
+/* ---- Toast ---- */
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 50;
+  padding: 9px 14px; border-radius: var(--r-md); background: var(--text); color: var(--surface); font-size: 13px; font-weight: 500;
+  opacity: 0; transform: translate(-50%, 10px) scale(0.96); pointer-events: none;
+  transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ==========================================================================
+   5. DOCKED LAYOUTS
+   Docked panels use a two-phase toggle (see JS): a 200ms transform/opacity exit,
+   then the column is removed and the chat pane "settles" in with transform/opacity.
+   ========================================================================== */
+@media (min-width: 761px) {
+  .sidebar { position: relative; inset: auto; width: 320px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; border-right: 1px solid var(--line); transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+  .app[data-sidebar="closed"] .sidebar { display: none; }
+  .app[data-sidebar="open"] .sidebar { animation: slideInL var(--t-slow) var(--ease) backwards; }
+  .sidebar.leaving { opacity: 0; transform: translateX(-16px); }
+  .btn-sb-collapse { display: grid; }
+  .btn-sb-open { display: none; }
+  .app[data-sidebar="closed"] .btn-sb-open { display: grid; }
+  .kbd { display: inline-block; }
+  .messages { padding: 28px 32px 8px; }
+  .composer { padding: 8px 24px 20px; }
+  .csearch { left: auto; width: 400px; right: 16px; }
+}
+@keyframes slideInL { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+
+@media (min-width: 1100px) {
+  .info { position: relative; inset: auto; width: 316px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; box-shadow: none; transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+  .app[data-info="closed"] .info { display: none; }
+  .app[data-info="open"] .info { animation: slideInR var(--t-slow) var(--ease) backwards; }
+  .info.leaving { opacity: 0; transform: translateX(16px); }
+  .scrim { display: none; }
+}
+@keyframes slideInR { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+  .btn-sb-open { display: grid !important; }
+  .head-actions .icon-btn { width: 36px; height: 36px; }
+}
+
+
+/* ==========================================================================
+   5b. AUTH GATE — sign in / create account / ID reveal
+   Same easing + durations as the rest of the app; transform & opacity only.
+   ========================================================================== */
+[hidden] { display: none !important; }
+.sb-foot .me b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.auth {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; overflow-y: auto;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg); transition: opacity var(--t-slow) var(--ease);
+}
+.auth.leaving { opacity: 0; pointer-events: none; }
+.auth-theme { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; }
+.auth-card {
+  width: min(400px, 100%); padding: 28px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-xl); box-shadow: var(--shadow-sm);
+  opacity: 0; transform: translateY(10px) scale(0.98);               /* hidden while the session check runs */
+  transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease);
+}
+.auth[data-state="form"] .auth-card { opacity: 1; transform: none; }
+.auth[data-view="done"] .auth-main { display: none; }
+
+.auth-tabs { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 3px; margin-bottom: 26px; background: var(--sunken); border-radius: 12px; }
+.auth-pill { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: var(--surface); border-radius: 9px; box-shadow: var(--shadow-xs); transition: transform var(--t-slow) var(--ease); }
+.auth[data-mode="register"] .auth-pill { transform: translateX(100%); }       /* the pill slides, it doesn't resize */
+.auth-tabs button { position: relative; height: 32px; font-size: 13px; font-weight: 500; color: var(--text-2); transition: color var(--t-fast) var(--ease); }
+.auth-tabs button[aria-selected="true"] { color: var(--text); }
+
+.auth h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.auth .sub { margin: 6px 0 22px; font-size: 13.5px; color: var(--text-2); }
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+.input-wrap { position: relative; display: flex; align-items: center; }
+.input-wrap input {
+  width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: var(--surface); outline: 0; font-size: 14px;
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease);
+}
+.input-wrap input.has-reveal { padding-right: 58px; }
+.input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field.invalid input { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(180, 68, 58, 0.1); }
+.reveal { position: absolute; right: 5px; height: 30px; padding: 0 9px; border-radius: 7px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+.reveal:hover { color: var(--text); }
+.hint { font-size: 12px; color: var(--text-3); }
+.field-err { display: none; font-size: 12px; color: var(--danger); }
+.field.invalid .field-err { display: block; animation: fadeUp var(--t-base) var(--ease); }
+.field.invalid .hint { display: none; }
+
+.form-err { display: none; margin-bottom: 14px; padding: 10px 12px; border-radius: var(--r-md); background: rgba(180, 68, 58, 0.09); color: var(--danger); font-size: 13px; }
+.form-err.show { display: block; animation: shake 380ms var(--ease); }
+@keyframes shake { 0% { opacity: 0; transform: translateX(0); } 25% { opacity: 1; transform: translateX(-5px); } 55% { transform: translateX(3px); } 80% { transform: translateX(-1px); } 100% { opacity: 1; transform: none; } }
+
+.auth-submit {
+  width: 100%; height: 42px; margin-top: 6px; border-radius: var(--r-md); background: var(--accent); color: var(--on-accent);
+  font-size: 14px; font-weight: 500; transition: transform 320ms var(--spring), opacity var(--t-base) var(--ease);
+}
+.auth-submit:active:not(:disabled) { transform: scale(0.98); transition-duration: 70ms; }
+.auth-submit:disabled { opacity: 0.55; cursor: default; }
+
+.id-card { margin: 20px 0 4px; padding: 20px 16px; text-align: center; background: var(--sunken); border-radius: var(--r-lg); animation: fadeUp var(--t-slow) var(--ease) 80ms backwards; }
+.id-num { font-size: 36px; font-weight: 600; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
+.id-card small { display: block; margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.done-actions { display: flex; gap: 8px; margin-top: 22px; }
+.done-actions .btn { height: 42px; flex: 1; }
+.done-actions .auth-submit { margin: 0; flex: 1.4; }
+
+/* ==========================================================================
+   6. REDUCED MOTION — keep state changes, drop travel and looping
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; transition-delay: 0ms !important; scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="app" id="app" data-sidebar="open" data-info="closed">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Conversations">
+    <header class="sb-head">
+      <h1>Messages</h1>
+      <button class="icon-btn hv btn-sb-collapse" id="btnSbCollapse" aria-label="Collapse sidebar" data-ic="panelLeft"></button>
+    </header>
+    <label class="sb-search">
+      <span data-ic="search" data-size="16"></span>
+      <input id="convSearch" type="search" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations">
+      <span class="kbd">Ctrl K</span>
+    </label>
+    <div class="sb-list scroll" id="convScroll">
+      <div class="req-group" id="reqGroup" hidden>
+        <div class="req-head">Friend requests</div>
+        <div id="reqList"></div>
+      </div>
+      <div class="conv-wrap">
+        <div class="indicator" id="indicator"></div>
+        <div id="convList" role="listbox" aria-label="Conversation list"></div>
+      </div>
+    </div>
+    <footer class="sb-foot">
+      <span class="av" id="meAv" style="--s:34px;--h:200"><span></span></span>
+      <div class="me"><b id="meName"></b><span id="meId"></span></div>
+      <button class="icon-btn hv btn-add" id="btnAdd" aria-label="Add friend" title="Add friend" data-ic="plus"></button>
+      <button class="icon-btn hv theme-btn" id="btnTheme" aria-label="Toggle dark mode" aria-pressed="false">
+        <span class="ic sun" data-ic="sun"></span><span class="ic moon" data-ic="moon"></span>
+      </button>
+      <button class="icon-btn hv" id="btnLogout" aria-label="Sign out" title="Sign out" data-ic="logout"></button>
+    </footer>
+  </aside>
+
+  <!-- ============ CHAT ============ -->
+  <main class="chat" id="chat">
+    <header class="chat-head">
+      <button class="icon-btn hv btn-sb-open" id="btnSbOpen" aria-label="Show conversations" data-ic="panelLeft"></button>
+      <div class="head-id" id="headId"></div>
+      <div class="head-actions">
+        <button class="icon-btn hv" id="btnSearch" aria-label="Search in conversation" data-ic="search"></button>
+        <button class="icon-btn hv" id="btnMore" aria-label="More actions" aria-haspopup="menu" data-ic="more"></button>
+        <button class="icon-btn hv" id="btnInfo" aria-label="Toggle contact info" aria-pressed="false" data-ic="panelRight"></button>
+      </div>
+    </header>
+
+    <div class="csearch" id="csearch" role="search">
+      <span style="color:var(--text-3)" data-ic="search" data-size="16"></span>
+      <input id="csInput" type="text" placeholder="Search this conversation" autocomplete="off" aria-label="Search this conversation">
+      <span class="count" id="csCount"></span>
+      <button class="icon-btn hv" id="csClose" aria-label="Close search" data-ic="close" data-size="16" style="width:30px;height:30px"></button>
+    </div>
+
+    <div class="chat-body">
+      <div class="messages scroll" id="messages" role="log" aria-live="polite"></div>
+      <button class="to-bottom" id="toBottom"><span data-ic="arrowDown" data-size="14"></span>Latest</button>
+    </div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Message" aria-label="Write a message"></textarea>
+        <button class="send" id="btnSend" aria-label="Send message" disabled data-ic="arrowUp" data-size="18"></button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ INFO PANEL ============ -->
+  <aside class="info" id="info" aria-label="Contact info">
+    <div class="info-head">Contact info
+      <button class="icon-btn hv" id="btnInfoClose" aria-label="Close contact info" data-ic="close"></button>
+    </div>
+    <div class="info-body scroll" id="infoBody"></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+</div>
+
+<!-- Dropdown -->
+<div class="menu" id="menu" role="menu"></div>
+
+<!-- Modal -->
+<div class="modal-layer" id="modal" aria-hidden="true">
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">Clear this conversation?</h2>
+    <p id="modalText">Messages in this chat will be hidden on your account. They stay available to the other person until they clear too — then they're deleted for both of you.</p>
+    <div class="modal-actions">
+      <button class="btn hv" id="modalCancel">Cancel</button>
+      <button class="btn danger" id="modalConfirm">Clear conversation</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add-friend modal -->
+<div class="modal-layer" id="addModal" aria-hidden="true">
+  <div class="modal-backdrop" id="addBackdrop"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle" style="width:min(360px,100%)">
+    <h2 id="addTitle">Add a friend</h2>
+    <p>Enter their 8-digit ID to send a friend request. They'll be able to accept or decline.</p>
+    <form id="addForm" novalidate autocomplete="on" style="margin-top:18px">
+      <div class="field" id="addField">
+        <label for="addUuid">Their ID</label>
+        <div class="input-wrap"><input id="addUuid" name="uuid" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" spellcheck="false" maxlength="8" placeholder="e.g. 14537910"></div>
+        <div class="hint">8 digits. Find it under their name in the conversation list, or in their profile.</div>
+        <div class="field-err"></div>
+      </div>
+      <div class="form-err" role="alert"></div>
+      <button class="auth-submit" type="submit" data-label="Send request">Send request</button>
+    </form>
+    <div class="modal-actions">
+      <button class="btn hv" id="addCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AUTH GATE ============ -->
+<div class="auth" id="auth" data-state="checking" data-mode="login" data-view="form">
+  <button class="icon-btn hv theme-btn auth-theme" id="btnThemeAuth" aria-label="Toggle dark mode" aria-pressed="false">
+    <span class="ic sun" data-ic="sun"></span><span class="ic moon" data-ic="moon"></span>
+  </button>
+
+  <div class="auth-card">
+    <div class="auth-main">
+      <div class="auth-tabs" role="tablist">
+        <span class="auth-pill"></span>
+        <button type="button" role="tab" data-mode="login" aria-selected="true">Sign in</button>
+        <button type="button" role="tab" data-mode="register" aria-selected="false">Create account</button>
+      </div>
+      <h2 id="authTitle">Welcome back</h2>
+      <p class="sub" id="authSub">Sign in with your username or 8-digit ID.</p>
+
+      <form id="formLogin" novalidate autocomplete="on">
+        <div class="field">
+          <label for="liId">Username or ID</label>
+          <div class="input-wrap"><input id="liId" name="identifier" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64"></div>
+          <div class="field-err"></div>
+        </div>
+        <div class="field">
+          <label for="liPw">Password</label>
+          <div class="input-wrap"><input id="liPw" name="password" type="password" class="has-reveal" autocomplete="current-password" maxlength="128"><button type="button" class="reveal hv">Show</button></div>
+          <div class="field-err"></div>
+        </div>
+        <div class="form-err" role="alert"></div>
+        <button class="auth-submit" type="submit" data-label="Sign in">Sign in</button>
+      </form>
+
+      <form id="formRegister" novalidate autocomplete="on" hidden>
+        <div class="field">
+          <label for="rgName">Username</label>
+          <div class="input-wrap"><input id="rgName" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20"></div>
+          <div class="hint">3–20 characters. Start with a letter; letters, numbers and _ only.</div>
+          <div class="field-err"></div>
+        </div>
+        <div class="field">
+          <label for="rgPw">Password</label>
+          <div class="input-wrap"><input id="rgPw" name="password" type="password" class="has-reveal" autocomplete="new-password" maxlength="128"><button type="button" class="reveal hv">Show</button></div>
+          <div class="hint">At least 8 characters.</div>
+          <div class="field-err"></div>
+        </div>
+        <div class="field">
+          <label for="rgPw2">Confirm password</label>
+          <div class="input-wrap"><input id="rgPw2" name="confirm" type="password" class="has-reveal" autocomplete="new-password" maxlength="128"><button type="button" class="reveal hv">Show</button></div>
+          <div class="field-err"></div>
+        </div>
+        <div class="form-err" role="alert"></div>
+        <button class="auth-submit" type="submit" data-label="Create account">Create account</button>
+      </form>
+    </div>
+
+    <div id="authDone" hidden>
+      <h2>You're in</h2>
+      <p class="sub" style="margin-bottom:0">Your account is ready. This is your personal ID. You can sign in with it or with your username.</p>
+      <div class="id-card"><div class="id-num" id="doneId"></div><small>Save it somewhere safe. It can't be changed.</small></div>
+      <div class="done-actions">
+        <button class="btn hv" id="doneCopy" type="button">Copy ID</button>
+        <button class="auth-submit" id="doneGo" type="button">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ==========================================================================
+   HELPERS
+   ========================================================================== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const root = document.documentElement;
+const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
+const mqSb = matchMedia('(min-width: 761px)');    // sidebar docked
+const mqInfo = matchMedia('(min-width: 1100px)'); // info panel docked
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+let _id = 0;
+// Per-page counter is only for local DOM-keying of the mock demo contacts
+// (which never touch KV / P2P). Anything that goes over the wire or into KV
+// must use wireId() so it survives a page refresh.
+const uid = () => 'm' + (++_id);
+const wireId = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+
+/* Retrigger a CSS animation class */
+function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+/* Icons (stroke set, 24px grid) */
+const ICONS = {
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  more: '<circle cx="5.5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor"/>',
+  panelLeft: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
+  panelRight: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M14.5 4.5v15"/>',
+  sun: '<circle cx="12" cy="12" r="3.8"/><path d="M12 3v1.8M12 19.2V21M3 12h1.8M19.2 12H21M5.6 5.6l1.3 1.3M17.1 17.1l1.3 1.3M18.4 5.6l-1.3 1.3M6.9 17.1l-1.3 1.3"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  arrowUp: '<path d="M12 19V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/>',
+  arrowDown: '<path d="M12 5v14"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  bell: '<path d="M6 9a6 6 0 1 1 12 0c0 4 1.5 5.5 2.5 6.5H3.5C4.5 14.5 6 13 6 9Z"/><path d="M10.3 19.5a2 2 0 0 0 3.4 0"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.01"/>',
+  logout: '<path d="M9 4.5H6.5A2.5 2.5 0 0 0 4 7v10a2.5 2.5 0 0 0 2.5 2.5H9"/><path d="m15 8 4 4-4 4"/><path d="M19 12H9.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="m4.5 12.5 5 5 10-11"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+};
+const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
+const tick = s => `<svg class="tick" data-s="${s}" width="16" height="11" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="t1" d="M1.5 6.5 5 10 12 2.5"/><path class="t2" d="M9 9.5l1 1L17 3"/></svg>`;
+
+/* Time formatting */
+const fmtTime = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+function dayLabel(d) {
+  const n = new Date(); if (sameDay(d, n)) return 'Today';
+  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+}
+function rowTime(d) {
+  const n = new Date(); if (sameDay(d, n)) return fmtTime(d);
+  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+/* ==========================================================================
+   MOCK DATA  ([from, text, minutesAgo, status])
+   ========================================================================== */
+const NOW = Date.now();
+const RAW = [
+  { id: 'mira', name: 'Mira Okafor', role: 'Product Designer', status: 'online', h: 158, tz: 'America/New_York', loc: 'New York, US', email: 'mira@northfield.studio', unread: 0,
+    files: [['Onboarding-flow-v3.fig', '4.2 MB', 'Sep 28', 'FIG'], ['Type-scale-notes.pdf', '860 KB', 'Sep 26', 'PDF'], ['Empty-states.png', '2.1 MB', 'Sep 24', 'PNG']],
+    inbound: ['Quick one: can you send the final spacing tokens?', 'Never mind, found them.'],
+    msgs: [
+      ['them', 'Morning! Did you get a chance to look at the onboarding flow?', 1500],
+      ['me', 'Just finished the first pass. The empty states need work.', 1490, 'read'],
+      ['them', "Agreed. I'll sketch a calmer version.", 1485],
+      ['me', 'Perfect, no rush.', 1480, 'read'],
+      ['them', 'Sketches are up in the shared folder.', 95],
+      ['them', 'I removed the illustration from the welcome step. It felt louder than the product.', 94],
+      ['me', 'Much better. The spacing finally breathes.', 70, 'read'],
+      ['them', 'Can we go through the type scale before the review at 3?', 6],
+      ['them', 'Also, the new accent reads too bright on dark. Want to compare two options?', 5],
+    ] },
+  { id: 'jonas', name: 'Jonas Weber', role: 'Frontend Engineer', status: 'online', h: 210, tz: 'Europe/Berlin', loc: 'Berlin, DE', email: 'jonas@northfield.studio', unread: 3,
+    files: [['sidebar-refactor.diff', '18 KB', 'Today', 'DIFF'], ['perf-trace.json', '3.4 MB', 'Sep 30', 'JSON']],
+    inbound: ['Merged. Deploying to staging in a few minutes.', 'Staging is up if you want to take a look.'],
+    msgs: [
+      ['them', 'Pushed the sidebar refactor.', 140],
+      ['me', 'Nice. Did you check reduced motion?', 130, 'read'],
+      ['them', 'On it.', 125],
+      ['them', 'The indicator animation is smooth now.', 22],
+      ['them', 'Transform only, no layout thrash.', 21],
+      ['them', 'Trace attached if you want the numbers.', 20],
+    ] },
+  { id: 'lena', name: 'Lena Park', role: 'Research Lead', status: 'away', h: 28, tz: 'Asia/Seoul', loc: 'Seoul, KR', email: 'lena@northfield.studio', unread: 1,
+    files: [['Interview-synthesis.pdf', '1.4 MB', 'Sep 30', 'PDF'], ['Participants.csv', '12 KB', 'Sep 27', 'CSV']],
+    inbound: ['Also: nobody noticed the loading animation, which is a good sign.'],
+    msgs: [
+      ['them', 'Interview notes from this week are in the folder.', 200],
+      ['me', 'Thank you. Reading them tonight.', 190, 'read'],
+      ['them', 'Three people asked for keyboard shortcuts. Worth noting.', 48],
+    ] },
+  { id: 'tomas', name: 'Tomás Rivera', role: 'Brand Strategist', status: 'offline', seen: 'Last seen 2 hours ago', h: 268, tz: 'America/Mexico_City', loc: 'Mexico City, MX', email: 'tomas@northfield.studio', unread: 0,
+    files: [['Positioning-draft.docx', '240 KB', 'Sep 29', 'DOC']], inbound: [],
+    msgs: [
+      ['me', 'Can you review the positioning draft when you have a moment?', 1700, 'read'],
+      ['them', 'Yes, tomorrow morning. Looks promising.', 1650],
+      ['me', 'Great, thank you.', 1640, 'read'],
+    ] },
+  { id: 'aiko', name: 'Aiko Tanaka', role: 'Motion Designer', status: 'online', h: 330, tz: 'Asia/Tokyo', loc: 'Tokyo, JP', email: 'aiko@northfield.studio', unread: 0,
+    files: [['loading-states.mp4', '12.8 MB', 'Sep 30', 'MP4'], ['easing-curves.json', '6 KB', 'Sep 27', 'JSON']],
+    inbound: ['I sent a slower version too. It feels calmer.'],
+    msgs: [
+      ['them', 'Exported the loading states. Thoughts on the shimmer speed?', 400],
+      ['me', 'Slightly slower, maybe 1.4 seconds.', 380, 'read'],
+      ['them', 'Done. Easing is the same curve we agreed on.', 370],
+    ] },
+  { id: 'priya', name: 'Priya Nair', role: 'Engineering Manager', status: 'offline', seen: 'Last seen yesterday', h: 190, tz: 'Asia/Kolkata', loc: 'Bengaluru, IN', email: 'priya@northfield.studio', unread: 0,
+    files: [['Q4-planning.pdf', '2.0 MB', 'Sep 27', 'PDF']], inbound: [],
+    msgs: [
+      ['them', 'Planning notes for Q4 are ready for comments.', 4400],
+      ['me', 'Will do by Friday.', 4300, 'read'],
+    ] },
+  { id: 'daniel', name: 'Daniel Cho', role: 'Design Systems', status: 'away', h: 120, tz: 'America/Los_Angeles', loc: 'Los Angeles, US', email: 'daniel@northfield.studio', unread: 0,
+    files: [['Token-audit.xlsx', '96 KB', 'Yesterday', 'XLS']],
+    inbound: ['One more thing: the grays are now a single scale.'],
+    msgs: [
+      ['them', 'Token audit is finished. 14 duplicates removed.', 900],
+      ['me', 'Brilliant.', 880, 'read'],
+    ] },
+];
+const people = RAW.map(p => ({
+  ...p, typing: false, replying: false, muted: false, draft: '',
+  messages: p.msgs.map(([from, text, ago, st]) => ({ id: uid(), from, text, t: new Date(NOW - ago * 60000), status: from === 'me' ? (st || 'read') : 'read' })),
+}));
+const REPLIES = ['Got it, thanks.', 'That works for me.', "Makes sense. I'll take a look.", 'Sounds good.', 'Let me check and get back to you.', 'Perfect, thank you.', 'Agreed.'];
+
+/* ==========================================================================
+   STATE + ELEMENTS
+   ========================================================================== */
+const state = { active: null, q: '' };
+const cur = () => people.find(p => p.id === state.active);
+const byId = id => people.find(p => p.id === id);
+const initials = n => n.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+const app = $('#app'), sidebar = $('#sidebar'), info = $('#info'), chat = $('#chat');
+const convList = $('#convList'), indicator = $('#indicator'), messages = $('#messages'), headId = $('#headId');
+const input = $('#input'), btnSend = $('#btnSend'), infoBody = $('#infoBody'), menu = $('#menu');
+const csearch = $('#csearch'), csInput = $('#csInput'), csCount = $('#csCount'), toBottom = $('#toBottom');
+const modal = $('#modal'), toastEl = $('#toast');
+  let thread = null;      // current .thread element (null while skeleton is showing)
+
+$$('[data-ic]').forEach(el => { el.innerHTML = ic(el.dataset.ic, +el.dataset.size || 18); });
+
+const avatar = (c, s = 40, ring) =>
+  `<span class="av" style="--s:${s}px;--h:${c.h}${ring ? `;--ring:${ring}` : ''}"><span>${initials(c.name)}</span><i class="dot ${c.status}"></i></span>`;
+
+const lastMsg = c => c.messages[c.messages.length - 1];
+function lastPreview(c) {
+  const m = lastMsg(c); if (!m) return 'No messages yet';
+  if (m.recalled) return m.from === 'me' ? 'You recalled a message' : 'Message recalled';
+  // Guard: m.text must be a string; a stray object would render as
+  // "[object Object]" in the row.
+  const text = typeof m.text === 'string' ? m.text : '(unreadable message)';
+  return (m.from === 'me' ? 'You: ' : '') + text;
+}
+const statusText = c => c.typing ? 'typing…' : c.status === 'online' ? 'Online' : c.status === 'away' ? 'Away' : c.seen;
+
+/* ==========================================================================
+   THEME — 300ms colour cross-fade via a temporary .theming class
+   ========================================================================== */
+let themeT;
+function setTheme(t) {
+  root.classList.add('theming'); clearTimeout(themeT);
+  themeT = setTimeout(() => root.classList.remove('theming'), 360);
+  root.dataset.theme = t;
+  $$('.theme-btn').forEach(b => b.setAttribute('aria-pressed', t === 'dark'));
+  try { localStorage.setItem('chat-theme', t); } catch (e) {}
+}
+$$('.theme-btn').forEach(b => {
+  b.setAttribute('aria-pressed', root.dataset.theme === 'dark');
+  b.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+});
+
+/* ==========================================================================
+   PANELS (sidebar + info)
+   Overlay mode: CSS slides with transform only.
+   Docked mode: 200ms exit (transform/opacity) -> column removed -> chat "settles".
+   ========================================================================== */
+function settle(side) {
+  chat.style.setProperty('--sx', side === 'left' ? '-10px' : '10px');
+  replay(chat, 'settle');
+}
+function setPanel(which, open) {
+  const el = which === 'info' ? info : sidebar;
+  const docked = which === 'info' ? mqInfo.matches : mqSb.matches;
+  if (el.classList.contains('leaving')) return;
+  if ((app.dataset[which] === 'open') === open) return;
+  if (open) {
+    app.dataset[which] = 'open';
+    if (which === 'info') playInfo();
+    if (docked) settle(which === 'info' ? 'right' : 'left');
+    syncButtons();
+  } else if (docked) {
+    el.classList.add('leaving');
+    setTimeout(() => {
+      app.dataset[which] = 'closed'; el.classList.remove('leaving');
+      settle(which === 'info' ? 'right' : 'left'); syncButtons();
+    }, 200);
+  } else {
+    app.dataset[which] = 'closed'; syncButtons();
+  }
+}
+const togglePanel = w => setPanel(w, app.dataset[w] !== 'open');
+function syncButtons() { $('#btnInfo').setAttribute('aria-pressed', app.dataset.info === 'open'); }
+function playInfo() { replay(info, 'play'); }
+
+$('#btnSbCollapse').addEventListener('click', () => setPanel('sidebar', false));
+$('#btnSbOpen').addEventListener('click', () => setPanel('sidebar', true));
+$('#btnInfo').addEventListener('click', () => togglePanel('info'));
+$('#btnInfoClose').addEventListener('click', () => setPanel('info', false));
+$('#scrim').addEventListener('click', () => setPanel('info', false));
+mqSb.addEventListener('change', () => { app.dataset.sidebar = mqSb.matches ? 'open' : 'closed'; syncButtons(); });
+mqInfo.addEventListener('change', () => { app.dataset.info = mqInfo.matches ? 'open' : 'closed'; syncButtons(); });
+
+/* ==========================================================================
+   SIDEBAR LIST
+   ========================================================================== */
+function rowHTML(c) {
+  const active = c.id === state.active;
+  return `<button class="conv${active ? ' active' : ''}${c.unread ? ' unread' : ''}" data-id="${c.id}" role="option" aria-selected="${active}">
+    ${avatar(c, 40)}
+    <span class="conv-body">
+      <span class="conv-top"><span class="conv-name">${esc(c.name)}</span><span class="conv-time">${lastMsg(c) ? rowTime(lastMsg(c).t) : ''}</span></span>
+      <span class="conv-bot"><span class="conv-last">${esc(lastPreview(c))}</span><span class="badge" data-n="${c.unread}">${c.unread || ''}</span></span>
+    </span></button>`;
+}
+function renderList() {
+  const q = state.q.trim().toLowerCase();
+  const list = people.filter(c => !q || c.name.toLowerCase().includes(q) || lastPreview(c).toLowerCase().includes(q));
+  convList.innerHTML = list.length ? list.map(rowHTML).join('') : `<p class="empty-note">No conversations match “${esc(state.q)}”.</p>`;
+  placeIndicator(false);
+}
+function listSkeleton() {
+  convList.innerHTML = Array.from({ length: 7 }, (_, i) =>
+    `<div class="conv-sk"><div class="sk av-sk"></div><div class="sk-lines"><div class="sk" style="width:${46 + (i * 17) % 30}%;height:11px"></div><div class="sk" style="width:${62 + (i * 13) % 28}%;height:10px"></div></div></div>`).join('');
+  indicator.style.opacity = 0;
+}
+/* Active indicator: ONE element translated to the active row (shared-layout feel) */
+function placeIndicator(animate) {
+  const row = convList.querySelector(`.conv[data-id="${state.active}"]`);
+  if (!row) { indicator.style.opacity = 0; return; }
+  if (!animate) indicator.style.transition = 'none';
+  indicator.style.transform = `translateY(${row.offsetTop + (row.offsetHeight - 24) / 2}px)`;
+  indicator.style.opacity = 1;
+  if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
+}
+function patchRow(c, { pulse = false } = {}) {
+  const row = convList.querySelector(`.conv[data-id="${c.id}"]`); if (!row) return;
+  $('.conv-last', row).textContent = lastPreview(c);
+  $('.conv-time', row).textContent = lastMsg(c) ? rowTime(lastMsg(c).t) : '';
+  const b = $('.badge', row); b.dataset.n = c.unread; if (c.unread) b.textContent = c.unread > 99 ? '99+' : c.unread;
+  row.classList.toggle('unread', c.unread > 0);
+  if (pulse && c.unread) replay(b, 'pulse');
+}
+convList.addEventListener('click', e => { const r = e.target.closest('.conv'); if (r) openConversation(r.dataset.id); });
+$('#convSearch').addEventListener('input', e => { state.q = e.target.value; renderList(); });
+
+/* ==========================================================================
+   HEADER + INFO PANEL
+   ========================================================================== */
+function renderHeader() {
+  const c = cur();
+  headId.innerHTML = `${avatar(c, 36)}<div class="head-text"><div class="head-name">${esc(c.name)}</div><div class="head-status" id="headStatus"></div></div>`;
+  replay(headId, 'swap'); updateStatus(true);
+}
+function updateStatus(force) {
+  const el = $('#headStatus'); if (!el) return;
+  const c = cur(), txt = statusText(c);
+  if (force || el.textContent !== txt) { el.textContent = txt; el.classList.toggle('is-typing', c.typing); if (!force) replay(el, 'flip'); }
+}
+function localTime(tz) { try { return new Date().toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+function renderInfo(animate) {
+  const c = cur();
+  if (c?.friend) {
+    infoBody.innerHTML = `
+      <section class="profile stag" style="--i:0">
+        ${avatar(c, 64)}
+        <div><div class="name">${esc(c.name)}</div><div class="role">Friend</div>
+        <div class="state"><i class="${c.status}"></i>${esc(c.status)}</div></div>
+      </section>
+      <section class="stag" style="--i:1">
+        <div class="sec-title">Account</div>
+        <div class="kv">
+          <div><small>Username</small><b>${esc(c.name)}</b></div>
+          <div><small>ID</small><b>${esc(c.id)}</b></div>
+          <div><small>Messages</small><b>${c.messages.length} stored</b></div>
+        </div>
+      </section>
+      <section class="stag" style="--i:2">
+        <div class="sec-title">Delivery</div>
+        <div class="kv"><div><small>Live channel</small><b>${c.p2pState === 'open' ? 'P2P (WebRTC)' : 'via server'}</b></div>
+        <div><small>Encryption</small><b>AES-256-GCM</b></div>
+        <div><small>History</small><b>Encrypted in KV</b></div></div>
+      </section>`;
+  } else {
+    infoBody.innerHTML = `
+      <section class="profile stag" style="--i:0">
+        ${avatar(c, 64)}
+        <div><div class="name">${esc(c.name)}</div><div class="role">${esc(c.role)}</div>
+        <div class="state"><i class="${c.status}"></i>${esc(c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : 'Away')}</div></div>
+      </section>
+      <section class="btn-row stag" style="--i:1">
+        <button class="btn hv" data-i="mute">${ic('bell', 15)}<span>${c.muted ? 'Unmute' : 'Mute'}</span></button>
+        <button class="btn hv" data-i="search">${ic('search', 15)}<span>Search chat</span></button>
+      </section>
+      <section class="stag" style="--i:2">
+        <div class="sec-title">Details</div>
+        <div class="kv"><div><small>Email</small><b>${esc(c.email)}</b></div><div><small>Local time</small><b>${localTime(c.tz)}, ${esc(c.loc)}</b></div></div>
+      </section>
+      <section class="stag" style="--i:3">
+        <div class="sec-title">Shared files <span>${(c.files || []).length}</span></div>
+        <div class="files">${(c.files || []).map(f => `<button class="file hv"><span class="file-ic">${f[3]}</span><span class="file-t"><b>${esc(f[0])}</b><span>${f[1]}, ${f[2]}</span></span></button>`).join('')}</div>
+      </section>`;
+  }
+  // Re-run the stagger-in animation ONLY when switching contacts / opening the
+  // panel (animate === true). Data refreshes from the 1s presence/KV poll call
+  // renderInfo() with no argument and must NOT re-animate — that's what made
+  // the info panel flicker on every poll tick.
+  if (animate) playInfo();
+}
+infoBody.addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  if (b.dataset.i === 'mute') toggleMute(); else { if (!mqInfo.matches) setPanel('info', false); setTimeout(openSearch, mqInfo.matches ? 0 : 250); }
+});
+
+/* ==========================================================================
+   MESSAGES
+   ========================================================================== */
+const reduce = () => reduceMQ.matches;
+function scrollBottom(smooth) { messages.scrollTo({ top: messages.scrollHeight, behavior: smooth && !reduce() ? 'smooth' : 'auto' }); }
+const nearBottom = () => messages.scrollHeight - messages.scrollTop - messages.clientHeight < 160;
+messages.addEventListener('scroll', () => {
+  toBottom.classList.toggle('show', messages.scrollHeight - messages.scrollTop - messages.clientHeight > 260);
+}, { passive: true });
+toBottom.addEventListener('click', () => scrollBottom(true));
+
+function skeleton() {
+  const rows = [['l', 52, 44], ['l', 36, 36], ['r', 44, 40], ['l', 60, 60], ['r', 30, 36], ['r', 50, 52]];
+  messages.innerHTML = `<div class="thread sk-thread fade-in" aria-hidden="true">${rows.map(([s, w, h]) => `<div class="sk-row ${s}"><div class="sk" style="width:${w}%;height:${h}px"></div></div>`).join('')}</div>`;
+  thread = null;
+}
+function bubbleHTML(m) {
+  if (m.recalled) return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span></div>`;
+  // The P2P wire sends {id, text, at}; a malformed payload could carry a
+  // non-string text — never let an object render as "[object Object]".
+  const text = typeof m.text === 'string' && m.text ? m.text : '[unreadable message]';
+  const meta = `<span class="meta"><time>${fmtTime(m.t)}</time>${m.from === 'me' ? tick(m.status) : ''}</span>`;
+  return `<div class="bubble"><span class="txt">${esc(text)}</span>${meta}</div>`;
+}
+function actionsHTML(m) {
+  if (m.recalled) return '';
+  return `<div class="msg-actions"><button class="hv" data-act="copy" aria-label="Copy message" title="Copy">${ic('copy', 15)}</button>${m.from === 'me' ? `<button class="hv" data-act="recall" aria-label="Recall message" title="Recall">${ic('undo', 15)}</button>` : ''}</div>`;
+}
+function msgEl(m, { enter = false, delay = 0 } = {}) {
+  const el = document.createElement('div');
+  el.className = `msg ${m.from === 'me' ? 'self' : 'other'}${enter ? ' enter' : ''}`;
+  el.dataset.mid = m.id; el.dataset.from = m.from; el.dataset.t = m.t.getTime();
+  if (delay) el.style.setProperty('--d', delay + 'ms');   // 60ms stagger for multi-arrivals
+  el.innerHTML = bubbleHTML(m) + actionsHTML(m);
+  return el;
+}
+const dayEl = d => { const e = document.createElement('div'); e.className = 'day'; e.textContent = dayLabel(d); return e; };
+
+/* Extra top margin when the speaker changes or after a 5-minute pause */
+function markGroups() {
+  let prev = null;
+  $$('.msg[data-mid]', thread).forEach(r => {
+    r.classList.toggle('gap', !!prev && (prev.dataset.from !== r.dataset.from || +r.dataset.t - +prev.dataset.t > 5 * 60000));
+    prev = r;
+  });
+}
+function renderMessages() {
+  const c = cur();
+  const t = document.createElement('div'); t.className = 'thread fade-in';
+  thread = t;
+  if (!c.messages.length) {
+    t.innerHTML = `<div class="empty"><b>No messages yet</b>${c.friend ? 'Start the conversation with ' + esc(c.name.split(' ')[0]) + '.' : 'Say hello to ' + esc(c.name.split(' ')[0]) + '.'}</div>`;
+  } else {
+    let last = null;
+    c.messages.forEach(m => { if (!last || !sameDay(last.t, m.t)) t.appendChild(dayEl(m.t)); t.appendChild(msgEl(m)); last = m; });
+    markGroups();
+  }
+  messages.replaceChildren(t);
+  messages.scrollTop = messages.scrollHeight;
+  if (csearch.classList.contains('open')) runSearch();
+  syncTyping();
+}
+function appendMessage(m, { delay = 0 } = {}) {
+  // If the pane isn't painted yet (thread null during a skeleton or a peer
+  // refresh), build it now instead of silently dropping the bubble — the
+  // message is already in c.messages, so renderMessages() includes it.
+  if (!thread) { renderMessages(); return; }
+  $('.empty', thread)?.remove();
+  const prev = $$('.msg[data-mid]', thread).pop();
+  if (!prev || !sameDay(new Date(+prev.dataset.t), m.t)) thread.insertBefore(dayEl(m.t), $('.typing-row', thread));
+  thread.insertBefore(msgEl(m, { enter: true, delay }), $('.typing-row', thread));
+  markGroups();
+}
+/* Drop the .enter class once finished so no will-change lingers */
+messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
+
+/* Typing indicator row */
+function showTypingRow() {
+  if (!thread || $('.typing-row', thread)) return;
+  const near = nearBottom();
+  const el = document.createElement('div'); el.className = 'msg other enter typing-row';
+  el.innerHTML = '<div class="bubble" aria-label="Typing"><span class="dots"><i></i><i></i><i></i></span></div>';
+  thread.appendChild(el); if (near) requestAnimationFrame(() => scrollBottom(true));
+}
+function hideTypingRow(immediate) {
+  const el = thread && $('.typing-row', thread); if (!el) return;
+  if (immediate || reduce()) { el.remove(); return; }
+  el.classList.add('leaving'); setTimeout(() => el.remove(), 200);
+}
+function setTyping(c, on) {
+  c.typing = on;
+  if (c.id !== state.active) return;
+  updateStatus(); on ? showTypingRow() : hideTypingRow();
+}
+function syncTyping() { if (cur().typing) showTypingRow(); }
+
+/* ==========================================================================
+   OPEN CONVERSATION
+   ========================================================================== */
+function openConversation(id, { initial = false } = {}) {
+  // A friend row is only rendered after `loadFriends` has pushed it into
+  // `people`, so by the time a user clicks it the object exists. But
+  // `openConversation` can also be reached programmatically (boot, accept-
+  // flow) before `loadFriends` resolves — in that case ensure the friend
+  // object is present so the rest of the flow (sendToFriend, loadHistory,
+  // ensureP2P) doesn't silently no-op.
+  if (id !== 'mira' && !byId(id) && /^\d{8}$/.test(id)) {
+    addFriendToList({ id, username: 'User ' + id });
+  }
+  // Re-opening the SAME conversation: refresh the header, the info panel, and
+  // (for friends) the history — don't just early-return and leave the message
+  // pane on stale content. Paint from memory immediately so the pane never
+  // sits on an empty placeholder while the KV request is in flight; the merge
+  // adds anything newer when it lands.
+  if (!initial && id === state.active) {
+    renderHeader(); renderInfo(true);
+    const c = cur();
+    if (c?.friend) refreshFriendHistory(c.id);
+    if (!mqSb.matches) setPanel('sidebar', false);
+    return;
+  }
+  const prev = cur(); if (prev) prev.draft = input.value;
+  state.active = id; let c = cur();
+  // If a friend object somehow isn't in people yet (boot race where
+  // openConversation is called before loadFriends resolves), fill it in now
+  // so the rest of the flow works.
+  if (!c && /^\d{8}$/.test(id)) {
+    addFriendToList({ id, username: 'User ' + id });
+    c = cur();
+  }
+  // A friend re-opened after the user cleared the conversation on this
+  // device will come back from the server with an empty history (the
+  // server marks each record hiddenBy:<me> when clear.js runs). The
+  // "No messages yet" placeholder is therefore the *correct* state, and
+  // new messages arriving live still append as usual.
+  c.unread = 0; patchRow(c);
+  $$('.conv', convList).forEach(r => { const a = r.dataset.id === id; r.classList.toggle('active', a); r.setAttribute('aria-selected', a); });
+  placeIndicator(true);
+  closeSearch(); hideMenu();
+  renderHeader(); renderInfo(true);
+  input.value = c.draft || ''; input.placeholder = 'Message ' + c.name.split(' ')[0]; autosize();
+  if (c?.friend) {
+    // Paint from memory immediately (even when empty -> "No messages yet",
+    // which is correct on a truly fresh conversation), then refresh the KV
+    // history in the background. The merge adds anything newer and re-paints
+    // — the pane is never held on a skeleton or stale content.
+    renderMessages();
+    refreshFriendHistory(c.id);
+    // Start (or re-use) the P2P channel to this friend so messages land in
+    // real time. Non-blocking: if Trystero is still loading the CDN or the
+    // peer hasn't connected yet, the first p2pSend establishes it on demand.
+    void ensureP2P(c.id);
+    // I'm now *in* the chat with this peer: any of their messages I haven't
+    // yet acknowledged become "read" from their side. Send a read receipt for
+    // the last few their-side messages so they flip to a double tick.
+    const unreadFromThem = c.messages.filter(x => x.from === 'them').slice(-20).map(x => x.id);
+    if (unreadFromThem.length) sendReadReceipt(c.id, 'read', unreadFromThem);
+  } else {
+    skeleton();
+    setTimeout(() => { renderMessages(); }, initial ? 700 : 420);   // demo contacts keep the skeleton
+  }
+  if (!initial && !mqSb.matches) setPanel('sidebar', false);
+  $('#toBottom').classList.remove('show');
+}
+
+/* ==========================================================================
+   COMPOSER + SEND
+   ========================================================================== */
+function autosize() {
+  input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  btnSend.disabled = !input.value.trim();
+}
+input.addEventListener('input', autosize);
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+btnSend.addEventListener('click', () => { send(); input.focus(); });
+
+function send() {
+  const text = input.value.trim(); if (!text) return;
+  const c = cur();
+  // Friend conversation: route through the P2P/KV path instead of the mock reply.
+  if (c?.friend) { sendToFriend(c); return; }
+  const m = { id: uid(), from: 'me', text, t: new Date(), status: 'sent' };
+  c.messages.push(m);
+  appendMessage(m);
+  input.value = ''; autosize();
+  patchRow(c);
+  requestAnimationFrame(() => scrollBottom(true));       // smooth scroll to newest
+  simulateDelivery(c, m);
+}
+function setStatus(c, m, s) {
+  m.status = s;
+  if (c.id === state.active && thread) { const t = thread.querySelector(`[data-mid="${m.id}"] .tick`); if (t) t.dataset.s = s; }
+}
+/* Receipts: sent -> delivered (500ms) -> read (online 1.3s / away 4.2s), then a reply */
+function simulateDelivery(c, m) {
+  setTimeout(() => setStatus(c, m, 'delivered'), 500);
+  if (c.status === 'offline') return;
+  const readAt = c.status === 'online' ? 1300 : 4200;
+  setTimeout(() => setStatus(c, m, 'read'), readAt);
+  setTimeout(() => startReply(c), readAt + (c.status === 'online' ? 500 : 1500));
+}
+function startReply(c) {
+  if (c.replying) return; c.replying = true;
+  setTyping(c, true);
+  const n = Math.random() < 0.4 ? 2 : 1;
+  setTimeout(() => {
+    setTyping(c, false); if (c.id === state.active) hideTypingRow(true);
+    const lines = []; while (lines.length < n) { const l = pick(REPLIES); if (!lines.includes(l)) lines.push(l); }
+    receive(c.id, lines); c.replying = false;
+  }, 1500 + Math.random() * 900);
+}
+/* Receive: bubbles enter with a 60ms stagger; inactive chats get an unread badge pulse */
+function receive(id, lines) {
+  const c = byId(id), isActive = id === state.active, near = isActive && thread && nearBottom();
+  lines.forEach((text, i) => {
+    const m = { id: uid(), from: 'them', text, t: new Date(), status: 'read' };
+    c.messages.push(m);
+    if (isActive) appendMessage(m, { delay: i * 60 });
+  });
+  if (!isActive) c.unread += lines.length;
+  patchRow(c, { pulse: !isActive && !c.muted });
+  if (isActive) { if (near) requestAnimationFrame(() => scrollBottom(true)); else toBottom.classList.add('show'); }
+}
+/* Background traffic from other contacts */
+function scheduleIncoming(first) {
+  setTimeout(() => {
+    // Only the mock demo contacts have canned `inbound` lines. Real friends
+    // have no `inbound` field and get their messages over P2P/KV, so the
+    // filter must not touch them (this used to crash on p.inbound.length).
+    const pool = people.filter(p => p.inbound?.length);
+    if (pool.length) {
+      const c = pick(pool), line = c.inbound.shift();
+      if (c.id === state.active) { setTyping(c, true); setTimeout(() => { setTyping(c, false); hideTypingRow(true); receive(c.id, [line]); }, 1400); }
+      else receive(c.id, [line]);
+    }
+    scheduleIncoming(false);
+  }, first ? 6500 : 12000 + Math.random() * 9000);
+}
+
+/* ==========================================================================
+   MESSAGE ACTIONS (hover / tap): copy + recall
+   ========================================================================== */
+messages.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]');
+  const row = e.target.closest('.msg[data-mid]');
+  if (act && row) {
+    const m = cur().messages.find(x => x.id === row.dataset.mid);
+    if (act.dataset.act === 'copy') copyText(m.text); else recall(m, row);
+    row.classList.remove('tap'); return;
+  }
+  if (e.target.closest('.bubble') && row) {       // touch: tap a bubble to reveal its actions
+    $$('.msg.tap', thread).forEach(x => x !== row && x.classList.remove('tap'));
+    row.classList.toggle('tap');
+  }
+});
+function copyText(t) {
+  const done = () => toast('Copied');
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
+  function fallback() {
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); done();
+  }
+}
+/* Recall: bubble fades/scales out (200ms), swaps to a quiet placeholder, fades back in */
+function recall(m, row) {
+  const bub = $('.bubble', row); bub.classList.add('recalling');
+  setTimeout(() => {
+    m.recalled = true;
+    row.innerHTML = bubbleHTML(m);
+    const nb = $('.bubble', row); nb.classList.add('recalling'); void nb.offsetWidth; nb.classList.remove('recalling');
+    patchRow(cur());
+  }, reduce() ? 0 : 200);
+}
+
+/* ==========================================================================
+   IN-CHAT SEARCH
+   ========================================================================== */
+let hits = [], hitIdx = -1;
+function openSearch() { csearch.classList.add('open'); csInput.focus(); $('#btnSearch').setAttribute('aria-pressed', true); }
+function closeSearch() {
+  if (!csearch.classList.contains('open')) return;
+  csearch.classList.remove('open'); csInput.value = ''; runSearch(); $('#btnSearch').setAttribute('aria-pressed', false);
+}
+function runSearch() {
+  if (!thread) return;
+  const q = csInput.value.trim().toLowerCase(); hits = [];
+  $$('.msg[data-mid]', thread).forEach(r => {
+    const m = cur().messages.find(x => x.id === r.dataset.mid);
+    const hit = !!q && m && !m.recalled && m.text.toLowerCase().includes(q);
+    r.classList.toggle('dim', !!q && !hit); r.classList.remove('current'); if (hit) hits.push(r);
+  });
+  $$('.day', thread).forEach(d => d.classList.toggle('dim', !!q));
+  hitIdx = hits.length ? hits.length - 1 : -1;      // start at the most recent match
+  focusHit(); 
+  csCount.textContent = q ? (hits.length ? `${hitIdx + 1} of ${hits.length}` : 'No matches') : '';
+}
+function focusHit() {
+  hits.forEach(h => h.classList.remove('current'));
+  const h = hits[hitIdx]; if (!h) return;
+  h.classList.add('current'); h.scrollIntoView({ block: 'center', behavior: reduce() ? 'auto' : 'smooth' });
+  csCount.textContent = `${hitIdx + 1} of ${hits.length}`;
+}
+csInput.addEventListener('input', runSearch);
+csInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && hits.length) { hitIdx = (hitIdx - (e.shiftKey ? -1 : 1) + hits.length) % hits.length; focusHit(); }
+});
+$('#btnSearch').addEventListener('click', () => csearch.classList.contains('open') ? closeSearch() : openSearch());
+$('#csClose').addEventListener('click', closeSearch);
+
+/* ==========================================================================
+   DROPDOWN + MODAL (scale .96 + fade; backdrop blur layer fades in)
+   ========================================================================== */
+function buildMenu() {
+  const c = cur();
+  menu.innerHTML = `
+    <button class="mi hv" role="menuitem" data-m="info">${ic('info', 16)}<span>${app.dataset.info === 'open' ? 'Hide contact info' : 'Contact info'}</span></button>
+    <button class="mi hv" role="menuitem" data-m="mute">${ic('bell', 16)}<span>${c.muted ? 'Unmute notifications' : 'Mute notifications'}</span></button>
+    <div class="msep"></div>
+    <button class="mi hv danger" role="menuitem" data-m="clear">${ic('trash', 16)}<span>Clear conversation</span></button>`;
+}
+function showMenu() {
+  buildMenu();
+  const r = $('#btnMore').getBoundingClientRect();
+  menu.style.top = (r.bottom + 8) + 'px'; menu.style.right = Math.max(12, innerWidth - r.right) + 'px';
+  menu.classList.add('open'); $('#btnMore').setAttribute('aria-expanded', true);
+}
+function hideMenu() { menu.classList.remove('open'); $('#btnMore').setAttribute('aria-expanded', false); }
+$('#btnMore').addEventListener('click', e => { e.stopPropagation(); menu.classList.contains('open') ? hideMenu() : showMenu(); });
+document.addEventListener('click', e => { if (!e.target.closest('#menu')) hideMenu(); });
+menu.addEventListener('click', e => {
+  const b = e.target.closest('[data-m]'); if (!b) return; hideMenu();
+  if (b.dataset.m === 'info') togglePanel('info');
+  if (b.dataset.m === 'mute') toggleMute();
+  if (b.dataset.m === 'clear') openModal();
+});
+function toggleMute() {
+  const c = cur(); c.muted = !c.muted;
+  toast(c.muted ? `Muted ${c.name.split(' ')[0]}` : `Unmuted ${c.name.split(' ')[0]}`);
+  const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = c.muted ? 'Unmute' : 'Mute';
+}
+function openModal() { modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); setTimeout(() => $('#modalCancel').focus(), 50); }
+function closeModal() { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); }
+$('#modalCancel').addEventListener('click', closeModal);
+$('#modalBackdrop').addEventListener('click', closeModal);
+$('#modalConfirm').addEventListener('click', async () => {
+  const c = cur();
+  if (c?.friend) {
+    // Per-user clear: tell the server to mark every record in this pair's
+    // KV history as hidden for ME. The records stay in KV (the peer still
+    // sees them); they're physically deleted only when the peer clears too.
+    // We do NOT wipe the local list optimistically: that clear round-trip is a
+    // read-modify-write on KV that races the 1s syncLoop and the peer's writes,
+    // so an optimistic blank can leave the pane "No messages" even for records
+    // still visible to me. Instead: wait for the server to confirm, then
+    // reconcile the local list to the server's visible set (old cleared records
+    // dropped, anything sent after the clear kept).
+    const friendId = c.friendId;
+    c._clearing = true;                 // guard: syncLoop merges wait for this
+    const res = await api('/api/friends/clear', { uuid: friendId });
+    c._clearing = false;
+    if (res.ok) {
+      await reconcileAfterClear(friendId);
+      closeModal(); patchRow(c); renderMessages(); toast('Conversation cleared');
+    } else {
+      closeModal(); toast('Could not clear conversation');
+    }
+  } else {
+    c.messages = []; closeModal(); patchRow(c); renderMessages(); toast('Conversation cleared');
+  }
+});
+
+/**
+ * After a confirmed per-user clear, trim the local message list to match the
+ * server's visible set for me. `loadHistory` only ever *adds*, so we reconcile
+ * explicitly: keep the in-memory messages whose ids the server still returns
+ * to me (new, not-yet-hidden ones) and drop the old records I just hid.
+ * Idempotent — if the server returns everything we already hold, nothing moves.
+ */
+async function reconcileAfterClear(peerId) {
+  const c = byId(peerId); if (!c) return;
+  try {
+    const r = await api(`/api/friends/history-get?uuid=${peerId}`);
+    if (!r.ok || !r.data) return;      // keep in-memory; don't blank on error
+    keys.set(peerId, r.data.key);
+    // The visible set, oldest->newest. Any in-memory message not in this set is
+    // one I've now hidden -> remove it. Anything in the set not yet in memory
+    // -> keep as-is (newer, not hidden).
+    const visible = new Set((r.data.msgs || []).map(m => m.id));
+    const kept = c.messages.filter(m => visible.has(m.id));
+    if (kept.length !== c.messages.length) c.messages = kept;
+    // Keep the localStorage mirror in step with what I can actually see after
+    // the clear (old records dropped, post-clear messages kept) — otherwise a
+    // refresh would restore the very records I just cleared.
+    persistMessages(c);
+  } catch (e) { /* offline; leave the list as-is */ }
+}
+
+/* ==========================================================================
+   FRIENDS — add / request / respond, friends list, AES-256 KV history,
+   and a WebRTC P2P bridge (Trystero over public Nostr relays).
+   ========================================================================== */
+const meId = () => {
+  // The signed-in user's 8-digit id. setMe() writes it as "ID 12345678".
+  const n = $('#meId').textContent || '';
+  return n.replace(/^ID\s*/, '').trim();
+};
+
+// Per-pair shared secret (AES-256 key, base64url), kept in memory for the
+// lifetime of this device. A new device re-fetches it from the server.
+const keys = new Map();
+// Per-peer Trystero room (finds the peer via public Nostr relays; after
+// that, messages travel directly between browsers over a DTLS-encrypted
+// WebRTC data channel). `p2p` is keyed by the friend's user id.
+const p2p = new Map();
+
+/* ---- localStorage message cache (refresh fast-path + offline fallback) ----
+   KV /history-get is the source of truth, but it's a network round-trip, so
+   a fresh page open lands on "No messages" until it resolves. We mirror each
+   friend's message list in localStorage (namespaced per signed-in user) so a
+   reopen paints the conversation INSTANTLY from cache; the KV merge that
+   follows still adds anything newer / still-visible. Cache is pure data
+   (no Date objects) — t is stored as ms.
+
+   KEY: `wh-cache:<meId>` -> JSON { <peerId>: [ {id,from,text,t,status}, … ] }
+   - persistMessages(c)   : write c.messages (all write paths call this; an empty
+                            list drops the peer's entry, so a fully cleared
+                            conversation clears its cache too).
+   - restoreMessages(peer): read cache into a fresh friend's messages[].
+   - clearCacheFor(peer)  : unconditionally drop one peer's entries. */
+const CACHE_KEY = () => 'wh-cache:' + meId();
+function cacheReadAll() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY())) || {}; } catch (e) { return {}; }
+}
+function cacheWriteAll(map) {
+  try { localStorage.setItem(CACHE_KEY(), JSON.stringify(map)); } catch (e) { /* quota / private mode */ }
+}
+function persistMessages(c) {
+  if (!c || !c.friendId) return;
+  const map = cacheReadAll();
+  const slim = c.messages.map(m => ({ id: m.id, from: m.from, text: m.text, t: +m.t, status: m.status || 'read' }));
+  if (slim.length) map[c.friendId] = slim; else delete map[c.friendId];
+  cacheWriteAll(map);
+}
+function restoreMessages(peer) {
+  const c = byId(peer.id); if (!c || c.messages.length) return;
+  const slim = (cacheReadAll()[peer.id]) || null; if (!slim) return;
+  c.messages = slim.map(m => ({ id: m.id, from: m.from, text: m.text, t: new Date(m.t), status: m.status || 'read' }));
+}
+function clearCacheFor(peerId) {
+  const map = cacheReadAll(); delete map[peerId]; cacheWriteAll(map);
+}
+
+/* ---- P2P live path (Trystero) ----
+   Every friend-pair gets a Trystero room named after the canonical pair,
+   so exactly the two friends involved can collide on it — anyone else with
+   the same appId but a different pair won't match.
+
+   Flow:
+   1. `openConversation(friendId)` calls `ensureP2P(friendId)`, which lazily
+      loads the Trystero ES module (only once) and joins the room for that
+      pair. Trystero walks public Nostr relays until it finds the peer's
+      browser also in that room, then exchanges WebRTC offer/answer/ICE.
+   2. `sendToFriend` (above) renders locally, then calls `p2pSend` which
+      fires the message over the data channel. Nothing blocks the UI on the
+      KV write — that's a background archive call.
+   3. The peer's `chatAction.onMessage` lands here in `receiveFromPeer`
+      (further down) and is rendered instantly.
+
+   STUN: Trystero's built-in defaults handle most home/office NATs. No TURN
+   is configured (see README's "P2P" section if two users can't connect).
+--------------------------------------------------------------- */
+let trysteroModule = null;          // cached `joinRoom` binding
+let trysteroFailed = false;        // if the CDN load failed, don't retry forever
+
+/* ---- Presence heartbeat + KV delivery fallback (1s loop) ----
+   Two things run on a 1-second tick while the app is open:
+
+   1. HEARTBEAT — POST /api/presence/beat. This is how the OTHER device learns
+      "you are on the web right now" even before the P2P channel is up. It
+      also backs the fallback delivery below.
+
+   2. KV SYNC — for each friend, if the P2P channel to them is NOT open yet
+      (channel never came up, peer opened the page but handshake is pending,
+      or a relay is blocked), we fall back to the KV archive: the peer polls
+      the KV history the same way, so a message you send before the channel
+      is established still reaches them within ~1s of their next poll.
+   This is exactly what prevents "A must open first / A's early message is
+   lost" — the sender's message is always written to KV (sendToFriend does
+   that), and the recipient's 1s poll picks it up regardless of P2P state.
+--------------------------------------------------------------- */
+const presenceOnline = new Map();   // peerId -> 'online' | 'offline' (last poll)
+let beatTimer = null;
+let syncTimer = null;
+
+async function heartbeatLoop() {
+  const me = meId(); if (!me) return;
+  try { await api('/api/presence/beat'); } catch { /* offline */ }
+  beatTimer = setTimeout(heartbeatLoop, 1000);
+}
+
+// KV fallback + presence poll, once a second.
+//
+// P2P is the fast path (real-time delivery over WebRTC); this loop is the
+// safety net that makes delivery *correct* even when P2P isn't live yet,
+// is flaky, or the peer refreshed. Two jobs per tick:
+//
+//   1) PRESENCE — GET /api/presence/who for each friend (fallback signal
+//      when P2P isn't open; P2P pings are authoritative when it is).
+//
+//   2) KV SYNC — GET /api/friends/history-get for each friend whose P2P
+//      channel is NOT open, and merge the result into the local message
+//      list (id-dedup, so it never duplicates a P2P-received message and
+//      never wipes anything). This is what prevents "A's early message is
+//      lost before B's channel is up" — the sender always writes to KV,
+//      and the recipient's poll picks it up within a second regardless
+//      of P2P state.
+//
+// The KV sync polls for *every* friend whose P2P isn't live, not just the
+// ones with unread or online presence — that's the difference between
+// "the message always lands" and "the message lands only if I happened
+// to be looking at the chat".
+async function syncLoop() {
+  const me = meId(); if (!me) return;
+  const friends = people.filter(p => p.friend && p.id !== me);
+  // 1) Presence poll.
+  for (const f of friends) {
+    let online = false;
+    try {
+      const r = await api(`/api/presence/who?uuid=${encodeURIComponent(f.id)}`);
+      online = !!(r.ok && r.data?.online);
+    } catch { /* server unreachable — keep last known presence */ }
+    presenceOnline.set(f.id, online ? 'online' : 'offline');
+    setP2pPresenceFromPoll(f.id, online);
+  }
+  // 2) KV sync: poll every friend whose P2P channel is NOT confirmed open.
+  //    "open" = a live, ping-verified channel (the peer is answering pings).
+  //    'connect'/'closed' means P2P can't be trusted to deliver right now, so
+  //    the KV archive is the source of truth and we poll it every tick.
+  for (const f of friends) {
+    if (f.p2pState === 'open') continue;   // P2P is live; it delivers new messages
+    const changed = await refreshFriendHistory(f.id);
+    if (changed) patchRow(f);
+  }
+  syncTimer = setTimeout(syncLoop, 1000);
+}
+
+// Presence from the server poll. Only overrides P2P when P2P is NOT live:
+// a live P2P "open" wins over a lagging "poll says offline"; a live P2P
+// "closed" + poll "online" is the *fallback* case that flips us online even
+// though the channel isn't up yet (e.g. relay was blocked).
+function setP2pPresenceFromPoll(peerId, online) {
+  const c = byId(peerId); if (!c) return;
+  const p2pLive = c.p2pState === 'open';
+  // If P2P is live-open, it's authoritative — don't let a stale poll flip us
+  // offline. If P2P is NOT open, the server poll is our best signal.
+  if (p2pLive) return;
+  c.status = online ? 'online' : 'offline';
+  c.seen = c.status === 'online' ? '' : 'Offline';
+  const row = convList.querySelector(`.conv[data-id="${peerId}"]`);
+  if (row) { const dot = $('.dot', row); if (dot) dot.className = 'dot ' + c.status; }
+  if (peerId === state.active) {
+    updateStatus(true);
+    const headDot = $('#headId')?.querySelector('.dot');
+    if (headDot) headDot.className = 'dot ' + c.status;
+    if (app.dataset.info === 'open') renderInfo();
+  }
+}
+async function loadTrystero() {
+  if (trysteroModule || trysteroFailed) return trysteroModule;
+  try {
+    // esm.run serves a small redirect shim; jsDelivr's +esm build is the real
+    // module. Either is allowed by CSP. Pin the version for reproducibility.
+    const m = await import('https://esm.run/trystero');
+    trysteroModule = m;
+  } catch (e) {
+    trysteroFailed = true;
+    console.warn('[wh] trystero failed to load; P2P disabled:', e?.message || e);
+    toast('P2P unavailable — messages will archive to cloud only.');
+  }
+  return trysteroModule;
+}
+
+/**
+ * Ensure a live channel with `peerId` exists. Idempotent: re-opening the same
+ * friend reuses the cached room. The room name is derived from the canonical
+ * pair so both sides land on the same room.
+ *
+ * Trystero rooms are per-PEER (a browser "in" this room = that friend).
+ * Each time a new peer appears in the room (the other friend's browser joins
+ * / reconnects), the `chatAction` is regenerated and we re-bind `onMessage`
+ * so incoming P2P messages land in real time — no page refresh required.
+ */
+async function ensureP2P(peerId) {
+  const me = meId(); if (!me || me === peerId) return;
+  // Re-use ANY cached room. We deliberately do NOT tear it down when the peer
+  // blips: re-joinRoom-ing on every open/close triggers a full sweep of all
+  // the Nostr relays (and the unreachable ones log "failed" each time). One
+  // long-lived room per peer keeps the log quiet and the channel warm.
+  if (p2p.has(peerId)) return p2p.get(peerId);
+  const { joinRoom } = await loadTrystero();
+  if (!joinRoom) { setP2pState(peerId, 'closed'); return null; }
+
+  const [a, b] = [me, peerId].sort();
+  const appId = 'wormhole-pair';
+  const roomName = `${a}:${b}`;
+  // Room password must be DETERMINISTIC and available on both sides before the
+  // first join. We do NOT use the KV pair key here: (1) it is only written to
+  // `keys` after the async loadHistory() fetch resolves, so the first
+  // joinRoom() call — which fires synchronously from openConversation / the
+  // loadFriends warm-up — would see keys.get() === undefined and fall back to
+  // a DIFFERENT password than a peer that already had it, splitting the two
+  // browsers into different Trystero rooms that can never find each other
+  // (onPeerJoin never fires, pings never land, the channel is stuck at
+  // 'connect'/'closed' and presence + delivery degrade to the KV poll).
+  // (2) conceptually the P2P channel is DTLS-encrypted by Trystero internally;
+  // the KV pair key is only the symmetric key for the *archived* messages.
+  // roomName is canonical (sorted a:b), so `wormhole-<roomName>` is identical
+  // on both ends and needs no async value.
+  const room = joinRoom({ appId, password: `wormhole-${roomName}` }, roomName);
+  console.log(`[wh p2p] join room ${roomName} (peer ${peerId}); password=wormhole-${roomName}`);
+
+  setP2pState(peerId, 'connect');
+
+  // Two P2P channels per peer:
+  //   'chat' — messages. Every payload is { kind:'msg', msg } or
+  //            { kind:'read', ids:[...] } — a read-receipt.
+  //   'ping' — a tiny keep-alive. Both sides send a ping every 2s while in
+  //            the room; the OTHER side is only considered *online* while it
+  //            keeps answering. This is what makes presence correct: a peer
+  //            that isn't actually on the web no longer pings, so we flip
+  //            them offline (no stale "online").
+  let chatAction = null;
+  let pingAction = null;
+  let lastPeerPing = 0;          // when the peer last pinged us
+  let myPingTimer = null;
+
+  const outbox = [];
+  const flushOutbox = () => {
+    if (!chatAction?.send) return;
+    while (outbox.length) {
+      const pending = outbox.shift();
+      try { chatAction.send(pending.msg).then(
+        () => {},   // delivery ack no longer means "read" — see p2pDelivered
+        () => { /* KV archive still has it */ }
+      ); } catch { outbox.unshift(pending); break; }
+    }
+  };
+
+  const bindChannels = () => {
+    chatAction = room.makeAction('chat');
+    chatAction.onMessage = (raw) => handlePeerControl(peerId, raw);
+    pingAction = room.makeAction('ping');
+    pingAction.onMessage = () => {
+      const wasOpen = byId(peerId)?.p2pState === 'open';
+      lastPeerPing = Date.now();
+      if (!wasOpen) console.log(`[wh p2p] ${peerId}: peer ping received -> channel OPEN`);
+      setP2pState(peerId, 'open');      // peer is alive on the web right now
+    };
+    // Start our own ping loop; the peer's pings are what prove they're online.
+    if (myPingTimer) clearInterval(myPingTimer);
+    myPingTimer = setInterval(() => {
+      // Stale peer ping -> peer went away (closed tab, network drop).
+      if (lastPeerPing && Date.now() - lastPeerPing > 6000) {
+        setP2pState(peerId, 'closed');
+        lastPeerPing = 0;
+      }
+      try { pingAction?.send('1'); } catch { /* channel not up yet */ }
+    }, 2000);
+    flushOutbox();
+  };
+  bindChannels();
+
+  const entry = { room, chatAction: () => chatAction, pingAction: () => pingAction, outbox };
+  p2p.set(peerId, entry);
+
+  room.onPeerJoin = () => {
+    console.log(`[wh p2p] ${peerId}: peer joined room -> CONNECTING`);
+    setP2pState(peerId, 'connect');     // peer just joined the room; online only
+                                         // once their pings start arriving
+    lastPeerPing = Date.now();
+    bindChannels();
+  };
+  room.onPeerLeave = () => {
+    console.log(`[wh p2p] ${peerId}: peer left room`);
+    setP2pState(peerId, 'closed');
+    lastPeerPing = 0;
+  };
+  // A transient close (relay churn, peer refresh) does NOT delete the room —
+  // keep it cached so the next open is instant and doesn't re-sweep relays.
+  room.onClose = () => {
+    console.log(`[wh p2p] ${peerId}: room closed`);
+    setP2pState(peerId, 'closed'); lastPeerPing = 0;
+  };
+  return entry;
+}
+
+/*
+ * Handle a control message from the peer over the P2P channel. Two shapes:
+ *   { kind:'msg', msg }         — a chat message (msg = { id, text, at })
+ *   { kind:'read',  ids }       — the peer READ these → double tick.
+ *   { kind:'seen',  ids }      — the peer got the delivery but isn't in the
+ *                                 chat view → single tick (delivered).
+ * Older versions wrapped `msg` as the full message object ({ id, from, text,
+ * t, status }); accept that too so nothing dies on mixed-version pairs.
+ */
+function handlePeerControl(peerId, raw) {
+  // Trystero already deserializes: `raw` is the object we sent. Tolerate a
+  // plain string too by parsing it.
+  let data;
+  try { data = (typeof raw === 'string') ? JSON.parse(raw) : raw; }
+  catch { data = { kind: 'msg', msg: { text: String(raw) } }; }
+  if (!data || typeof data !== 'object') data = { kind: 'msg', msg: data };
+  switch (data.kind) {
+    case 'read':
+      markPeerRead(peerId, data.ids || []);
+      break;
+    case 'seen':
+      markPeerSeen(peerId, data.ids || []);
+      break;
+    case 'msg':
+    default:
+      receiveFromPeer(peerId, data.msg || data);
+  }
+}
+
+// The peer is actively reading these → double tick.
+function markPeerRead(peerId, ids) {
+  const c = byId(peerId); if (!c) return;
+  ids.forEach(id => { const m = c.messages.find(x => x.id === id && x.from === 'me'); if (m) setStatus(c, m, 'read'); });
+}
+// The peer received these but is NOT in the chat → single tick (delivered).
+function markPeerSeen(peerId, ids) {
+  const c = byId(peerId); if (!c) return;
+  ids.forEach(id => {
+    const m = c.messages.find(x => x.id === id && x.from === 'me');
+    // "delivered" is the default once they've got it; only UPGRADE, never downgrade
+    // a message that's already "read" (they read it earlier, then left the view).
+    if (m && m.status !== 'read') setStatus(c, m, 'delivered');
+  });
+}
+
+/* ---- Send a read/seen receipt to the peer over P2P ----
+   Gate on the channel being confirmed open (a ping-verified 'open'), not just
+   on send() existing: an action bound while the channel is still 'connect'
+   would hand the receipt to an outbox that may never flush in this session,
+   and the peer's tick would stay stuck. */
+function sendReadReceipt(peerId, kind, ids) {
+  const entry = p2p.get(peerId);
+  if (byId(peerId)?.p2pState === 'open' && entry?.chatAction?.()?.send) {
+    entry.chatAction().send({ kind, ids }).catch(() => {});
+  }
+  // Peer not confirmed live; nothing to send. Their client shows the default
+  // single tick until they're back and actually read.
+}
+
+function p2pSend(peerId, msg) {
+  // Real-time chat. The wire payload is a flat { id, text, at } object (NOT the
+  // full message — no Date, no nested fields), wrapped as { kind:'msg', msg }.
+  // If the channel is up, send now; otherwise queue it — it's flushed the
+  // moment the peer's channel opens, so a message sent before the peer was
+  // online still reaches them.
+  const entry = p2p.get(peerId);
+  const wire = { kind: 'msg', msg: { id: msg.id, text: msg.text, at: msg.t.getTime() } };
+  if (entry?.chatAction()?.send) {
+    entry.chatAction().send(wire).catch(() => {});
+    return;
+  }
+  if (entry?.outbox) {
+    // Don't enqueue a duplicate of a message already waiting.
+    if (!entry.outbox.some(o => o.msg?.id && o.msg.id === wire.msg.id)) entry.outbox.push({ msg: wire });
+  }
+  ensureP2P(peerId);   // flushOutbox runs the moment the channel binds
+}
+
+function setP2pState(peerId, p2pState) {
+  const c = byId(peerId); if (!c) return;
+  c.p2pState = p2pState;
+  // Presence: ONLY a live, confirmed channel (p2pState === 'open') means the
+  // peer is actually on their device. 'connect' is "we're trying to reach
+  // them" — the peer may not be online at all, so it must NOT count online.
+  c.status = p2pState === 'open' ? 'online' : 'offline';
+  c.seen = c.status === 'online' ? '' : 'Offline';
+  const row = convList.querySelector(`.conv[data-id="${peerId}"]`);
+  if (row) { const dot = $('.dot', row); if (dot) dot.className = 'dot ' + c.status; }
+  if (peerId === state.active) {
+    updateStatus(true);
+    const headDot = $('#headId')?.querySelector('.dot');
+    if (headDot) headDot.className = 'dot ' + c.status;
+    if (app.dataset.info === 'open') renderInfo();
+  }
+}
+
+/* ---- Friend list state ----
+   We keep friends in `people` with a `friend:true` flag and `friendId`.
+   renderList() will show them alongside the mock contacts; the mock data
+   stays as-is for now (this is the "stage 2" you described).
+*/
+const reqs = { mine: [], incoming: [] }; // {uuid, username, status}
+
+function addFriendToList(peer) {
+  const h = (parseInt(peer.id, 10) % 360);
+  const existing = byId(peer.id) || people.find(p => p.friendId === peer.id);
+  if (existing) { existing.friend = true; return existing; }
+  const c = {
+    id: peer.id, friendId: peer.id, friend: true,
+    name: peer.username || 'User ' + peer.id,
+    role: 'Friend', status: 'offline', seen: 'Offline', h, unread: 0,
+    typing: false, replying: false, muted: false, draft: '',
+    p2pState: 'closed',
+    messages: [],
+  };
+  people.push(c);
+  // Fast-path: fill from the localStorage mirror so a reopened conversation
+  // has content on first paint, not "No messages" while /history-get is in
+  // flight. loadHistory() will merge in anything newer / still-visible.
+  restoreMessages(c);
+  return c;
+}
+
+async function loadFriends() {
+  const me = meId(); if (!me) return;
+  try {
+    const r = await api('/api/friends/list');
+    if (!r.ok || !r.data) return;
+    for (const f of r.data.friends || []) addFriendToList({ id: f.id, username: f.username });
+    for (const q of r.data.requests || []) {
+      const entry = { uuid: q.uuid, username: q.username, by: q.by };
+      (q.by === me ? reqs.mine : reqs.incoming).push(entry);
+    }
+    renderList();
+    renderRequests();
+    // Warm a live P2P room for up to the first 5 friends so real-time chat
+    // works regardless of who sends first (both sides are already in the
+    // room). More than that would open dozens of Nostr relay connections at
+    // boot with no benefit; the rest are established lazily by the first
+    // p2pSend or openConversation to that friend.
+    for (const f of (r.data.friends || []).slice(0, 5)) {
+      if (!p2p.has(f.id)) void ensureP2P(f.id);
+    }
+  } catch (e) { /* offline / no server; friends list stays empty */ }
+}
+
+async function loadHistory(peerId) {
+  const c = byId(peerId);
+  // A clear is in flight: its round-trip will reconcile the list to the
+  // server's visible set. Don't let a concurrent syncLoop poll re-add the old
+  // records we just hid (KV may not have applied the hiddenBy flag yet, so the
+  // poll's response can still carry them). reconcileAfterClear handles the trim.
+  if (c._clearing) return false;
+  // Merge, don't wipe: keep any messages already in memory (ones you just
+  // sent, or that arrived live over P2P) and add only what the server has
+  // that we don't hold. The server already filters out records this user
+  // has hidden (clear.js marks them hiddenBy:<me>), so a cleared
+  // conversation simply comes back empty from the API — there is no
+  // client-side "cleared" lock to manage.
+  if (!c) return false;
+  try {
+    const r = await api(`/api/friends/history-get?uuid=${peerId}`);
+    if (!r.ok || !r.data) return false;   // keep whatever is in memory
+    keys.set(peerId, r.data.key);
+    const have = new Set(c.messages.map(x => x.id));
+    const incoming = (r.data.msgs || [])
+      .map(m => ({
+        id: m.id, from: m.from === meId() ? 'me' : 'them',
+        text: m.unreadable ? '[unreadable message]' : (typeof m.text === 'string' ? m.text : ''),
+        t: new Date(+m.at || Date.now()), status: 'read',
+      }))
+      .filter(m => m.text && !have.has(m.id));
+    if (!incoming.length) return false;
+    // Append the new ones and keep the whole thing in time order.
+    c.messages = c.messages.concat(incoming).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1));
+    persistMessages(c);   // keep the localStorage mirror in step
+    return true;   // new content arrived
+  } catch (e) { return false; }   // offline / no server; in-memory is kept
+}
+
+/* Fire loadHistory and, if new content arrived, re-render the active pane and
+   the sidebar row. Used by openConversation (immediate paint + background
+   merge) and by the sync loop. Idempotent: dedup on id in loadHistory means
+   calling it repeatedly never duplicates or wipes anything.
+
+   Staleness is tracked PER PEER (one token in the peer's object), not with the
+   global counter — the sync loop polls every friend in turn, so a global counter
+   would let a poll for one friend invalidate a still-in-flight refresh for
+   another. */
+function refreshFriendHistory(peerId) {
+  const c = byId(peerId);
+  if (!c) return Promise.resolve(false);
+  const before = c.messages.length;
+  c._histTok = (c._histTok || 0) + 1;
+  const tok = c._histTok;
+  return loadHistory(peerId).then(changed => {
+    if (c._histTok !== tok) return false;   // a newer refresh superseded this one
+    if (!changed) return false;
+    if (c.messages.length !== before && peerId === state.active) renderMessages();
+    return true;
+  });
+}
+
+/* ---- Render the requests group ---- */
+function renderRequests() {
+  const list = $('#reqList'), group = $('#reqGroup');
+  const all = [...reqs.incoming, ...reqs.mine];
+  group.hidden = !all.length;
+  if (!all.length) { list.innerHTML = ''; return; }
+  list.innerHTML = all.map((q, i) => {
+    const isMine = reqs.mine.includes(q);
+    const c = byId(q.uuid);
+    const h = c ? c.h : (parseInt(q.uuid, 10) % 360);
+    const name = q.username || ('User ' + q.uuid);
+    const av = c ? avatar(c, 32) : `<span class="av" style="--s:32px;--h:${h}"><span>${esc(name.slice(0, 2).toUpperCase())}</span></span>`;
+    const meta = isMine ? 'Waiting for reply' : 'Wants to be friends';
+    const acts = isMine
+      ? `<span class="req-wait">Waiting</span>`
+      : `<div class="req-acts">
+           <button class="req-btn ok" data-act="accept" data-uuid="${q.uuid}">${ic('check', 14)}<span>Accept</span></button>
+           <button class="req-btn no" data-act="decline" data-uuid="${q.uuid}" aria-label="Decline">${ic('x', 14)}</button>
+         </div>`;
+    return `<div class="req req-in ${isMine ? 'waiting' : ''}" data-uuid="${q.uuid}" style="animation-delay:${i * 40}ms">
+      ${av}
+      <span class="req-body"><span class="req-name">${esc(name)}</span><span class="req-meta">${meta}</span></span>
+      ${acts}
+    </div>`;
+  }).join('');
+}
+
+$('#reqList').addEventListener('click', async e => {
+  const b = e.target.closest('.req-btn'); if (!b) return;
+  const row = b.closest('.req'), uuid = b.dataset.uuid, act = b.dataset.act;
+  // Disable the pair so a double-click can't fire twice.
+  $$('.req-btn', row).forEach(x => x.disabled = true);
+  const r = await api('/api/friends/respond', { uuid, accept: act === 'accept' });
+  if (!r.ok) { $$('.req-btn', row).forEach(x => x.disabled = false); return; }
+  row.classList.add('leaving');
+  setTimeout(() => {
+    // For a new friend, add them to the conversation list and open their chat
+    // right away — that's the "go into the chat" step that was missing.
+    if (act === 'accept') {
+      const username = reqs.incoming.find(q => q.uuid === uuid)?.username;
+      const c = addFriendToList({ id: uuid, username });
+      renderList();
+      placeIndicator(false);
+      openConversation(uuid);
+    }
+    const i = reqs.incoming.indexOf(reqs.incoming.find(q => q.uuid === uuid)); if (i > -1) reqs.incoming.splice(i, 1);
+    const j = reqs.mine.indexOf(reqs.mine.find(q => q.uuid === uuid)); if (j > -1) reqs.mine.splice(j, 1);
+    renderRequests();
+    loadFriends();
+  }, 220);
+});
+
+/* ---- "Add friend" modal ---- */
+const addModal = $('#addModal');
+function openAdd() {
+  addModal.classList.add('open'); addModal.setAttribute('aria-hidden', 'false');
+  $('#addUuid').value = ''; $('#addField').classList.remove('invalid');
+  $('.form-err', $('#addForm')).classList.remove('show');
+  setTimeout(() => $('#addUuid').focus(), 80);
+}
+function closeAdd() { addModal.classList.remove('open'); addModal.setAttribute('aria-hidden', 'true'); }
+$('#btnAdd').addEventListener('click', openAdd);
+$('#addCancel').addEventListener('click', closeAdd);
+$('#addBackdrop').addEventListener('click', closeAdd);
+
+$('#addForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const uuid = $('#addUuid').value.trim();
+  const field = $('#addField'), formErr = $('.form-err', $('#addForm'));
+  const fail2 = msg => { field.classList.add('invalid'); $('.field-err', field).textContent = msg; formErr.classList.remove('show'); };
+  if (!/^\d{8}$/.test(uuid)) { fail2('Enter an 8-digit ID.'); formErr.textContent = 'The ID must be exactly 8 digits.'; formErr.classList.add('show'); return; }
+  const me = meId();
+  if (uuid === me) { fail2("That's your own ID."); return; }
+  const btn = $('.auth-submit', $('#addForm'));
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const r = await api('/api/friends/request', { uuid });
+  btn.disabled = false; btn.textContent = btn.dataset.label;
+  if (r.ok) {
+    closeAdd(); toast('Request sent');
+    // It'll show up in their list; poll our own requests so the "you requested"
+    // row appears here.
+    loadFriends();
+  } else {
+    const er = r.data?.error;
+    const msg = {
+      invalid_uuid: 'Enter a valid 8-digit ID.',
+      unknown_user: 'No account with that ID.',
+      already_friend: 'You are already friends.',
+      already_pending: 'You already sent a request.',
+      self: "That's your own ID.",
+      rate_limited: 'Too many requests. Wait a moment and try again.',
+      misconfigured: 'The server is missing the KV binding.',
+    }[er?.code] || 'Something went wrong.';
+    fail2(msg);
+  }
+});
+
+/* ---- Composer send: route through P2P when open, otherwise persist to KV ---- */
+// A friend conversation is identified by c.friend (set in addFriendToList).
+// For those, sending (1) paints locally, (2) fires the live P2P wire message,
+// and (3) writes an encrypted KV copy so a new device can restore history.
+// P2P is the real-time path; KV is the archive + fallback.
+function sendToFriend(c) {
+  const text = input.value.trim(); if (!text) return;
+  const m = { id: wireId(), from: 'me', text, t: new Date(), status: 'sent' };
+  // 1) Local: paint instantly. The bubble appears in the same tick as the
+  //    keystroke — it never waits on the network, so there's no lag.
+  c.messages.push(m);
+  appendMessage(m);
+  input.value = ''; autosize();
+  patchRow(c);
+  requestAnimationFrame(() => scrollBottom(true));
+  persistMessages(c);   // keep the localStorage mirror in step (fast reopen)
+
+  // 2) Real-time: hand the message to the P2P bridge over the DTLS-encrypted
+  //    WebRTC data channel. The peer renders it the moment it arrives.
+  p2pSend(c.friendId, m);
+
+  // 3) Cloud archive: the AES-256-encrypted copy to KV is what a new device
+  //    restores and what the peer's KV-sync poll picks up if P2P isn't live.
+  //    Fire-and-forget; a failed write silently degrades to the peer's P2P
+  //    delivery — we don't toast on every send, that would be noise.
+  const me = meId();
+  if (me && c.friendId) void api('/api/friends/history', { uuid: c.friendId, text, id: m.id });
+}
+
+/* ---- Receive from a P2P peer (called by the bridge when a message lands) ---- */
+function receiveFromPeer(peerId, raw) {
+  // P2P live path: a message arrives over the WebRTC channel and is rendered
+  // the instant it lands — it does NOT wait on KV. The KV archive is written
+  // by the *sender* independently; it is never on the receive hot path, so
+  // KV lag can't stall a live conversation.
+  // `raw` is the parsed { id, text, at } object from handlePeerControl;
+  // tolerate a plain string (older senders) and a nested full message object.
+  let data = raw;
+  if (typeof data === 'string') { try { data = JSON.parse(data); } catch { data = { text: data }; } }
+  if (!data || typeof data !== 'object') data = { text: String(data ?? '') };
+  // The wire shape is { id, text, at }. Older senders sent the full message
+  // { id, from, text, t, status } — fall back to `t` for the timestamp.
+  const text = typeof data.text === 'string' ? data.text
+    : (data.text && typeof data.text === 'object' && typeof data.text.text === 'string' ? data.text.text : null);
+  if (text == null) return;   // nothing renderable; never show "[object Object]"
+  const atMs = +data.at || +data.t || Date.now();
+  // The friend object may not be in `people` yet if this P2P message arrives
+  // before loadFriends() has populated it. Materialize a minimal friend entry
+  // so the message isn't dropped.
+  let c = byId(peerId);
+  if (!c && /^\d{8}$/.test(peerId)) {
+    addFriendToList({ id: peerId, username: 'User ' + peerId });
+    c = byId(peerId);
+  }
+  if (!c) return;
+  // De-dup by id (NOT id+from): the same logical message is also archived to
+  // KV, which loadHistory merges in from the *sender's* side. A by-id check
+  // means a P2P copy and a KV copy can never both land in the list.
+  const m = {
+    id: data.id || wireId(),
+    from: 'them',
+    text,
+    t: new Date(atMs),
+    status: 'read',
+  };
+  if (!c.messages.some(x => x.id === m.id)) c.messages.push(m);
+  persistMessages(c);   // keep the localStorage mirror in step (fast reopen)
+  const isActive = peerId === state.active;
+  if (isActive) appendMessage(m);
+  else c.unread += 1;
+  patchRow(c, { pulse: !isActive && !c.muted });
+  if (isActive) requestAnimationFrame(() => scrollBottom(true));
+
+  // Acknowledge to the SENDER. A "read" receipt (their double tick) is only
+  // sent while we are actively in the chat with them; otherwise a "seen"
+  // receipt gives them a single (delivered) tick.
+  if (isActive) sendReadReceipt(peerId, 'read', [m.id]);
+  else          sendReadReceipt(peerId, 'seen', [m.id]);
+}
+
+
+/* ==========================================================================
+   TOAST
+   ========================================================================== */
+let toastT;
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1800); }
+
+/* ==========================================================================
+   KEYBOARD
+   ========================================================================== */
+document.addEventListener('keydown', e => {
+  if (!started) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault(); setPanel('sidebar', true); setTimeout(() => $('#convSearch').focus(), 60);
+  }
+  if (e.key === 'Escape') {
+    if (modal.classList.contains('open')) closeModal();
+    else if (menu.classList.contains('open')) hideMenu();
+    else if (csearch.classList.contains('open')) closeSearch();
+    else if (!mqInfo.matches && app.dataset.info === 'open') setPanel('info', false);
+  }
+});
+
+/* ==========================================================================
+   AUTH — talks to /api/auth/* (Cloudflare Pages Functions + KV)
+   Flow: GET /me -> signed in ? open the app : show the gate.
+   ========================================================================== */
+const authEl = $('#auth'), formLogin = $('#formLogin'), formReg = $('#formRegister'), authDone = $('#authDone');
+const MODE_COPY = {
+  login: ['Welcome back', 'Sign in with your username or 8-digit ID.'],
+  register: ['Create your account', 'Pick a username and password. Your ID is generated for you.'],
+};
+const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,19}$/;
+let pendingUser = null;
+
+async function api(path, body) {
+  try {
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET', credentials: 'same-origin',
+      headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null; try { data = await res.json(); } catch (e) {}
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) { return { ok: false, network: true, data: null }; }
+}
+
+function setMode(mode) {
+  authEl.dataset.mode = mode;
+  $$('.auth-tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.mode === mode));
+  formLogin.hidden = mode !== 'login'; formReg.hidden = mode !== 'register';
+  const f = mode === 'login' ? formLogin : formReg;
+  clearErrors(f); replay(f, 'fade-in');
+  $('#authTitle').textContent = MODE_COPY[mode][0]; $('#authSub').textContent = MODE_COPY[mode][1];
+}
+function fieldErr(form, name, msg) {
+  const f = $(`[name="${name}"]`, form)?.closest('.field'); if (!f) return false;
+  f.classList.add('invalid'); $('.field-err', f).textContent = msg; return true;
+}
+function clearErrors(form) { $$('.field.invalid', form).forEach(f => f.classList.remove('invalid')); $('.form-err', form).classList.remove('show'); }
+function formErr(form, msg) { const e = $('.form-err', form); e.textContent = msg; e.classList.remove('show'); void e.offsetWidth; e.classList.add('show'); }
+function busy(form, on, label) { const b = $('.auth-submit', form); b.disabled = on; b.textContent = on ? label : b.dataset.label; }
+function showError(form, r) {
+  const er = r.data && r.data.error;
+  if (er && er.field && fieldErr(form, er.field, er.message)) return;
+  formErr(form, er ? er.message : r.network ? "Can't reach the server. Check your connection and try again." : 'Something went wrong. Please try again.');
+}
+
+$$('.auth-tabs button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+$$('.reveal').forEach(b => b.addEventListener('click', () => {
+  const i = b.previousElementSibling, show = i.type === 'password';
+  i.type = show ? 'text' : 'password'; b.textContent = show ? 'Hide' : 'Show';
+}));
+[formLogin, formReg].forEach(f => f.addEventListener('input', e => e.target.closest('.field')?.classList.remove('invalid')));
+
+formLogin.addEventListener('submit', async e => {
+  e.preventDefault(); clearErrors(formLogin);
+  const identifier = formLogin.identifier.value.trim(), password = formLogin.password.value;
+  let bad = false;
+  if (!identifier) { fieldErr(formLogin, 'identifier', 'Enter your username or ID.'); bad = true; }
+  if (!password) { fieldErr(formLogin, 'password', 'Enter your password.'); bad = true; }
+  if (bad) return;
+  busy(formLogin, true, 'Signing in…');
+  const r = await api('/api/auth/login', { identifier, password });
+  busy(formLogin, false);
+  if (r.ok && r.data && r.data.user) { formLogin.reset(); enterApp(r.data.user); } else showError(formLogin, r);
+});
+
+formReg.addEventListener('submit', async e => {
+  e.preventDefault(); clearErrors(formReg);
+  const username = formReg.username.value.trim(), password = formReg.password.value, confirm = formReg.confirm.value;
+  let bad = false;
+  if (!USERNAME_RE.test(username)) { fieldErr(formReg, 'username', 'Use 3–20 characters, starting with a letter. Letters, numbers and _ only.'); bad = true; }
+  if (password.length < 8) { fieldErr(formReg, 'password', 'Password must be at least 8 characters.'); bad = true; }
+  if (confirm !== password) { fieldErr(formReg, 'confirm', 'Passwords do not match.'); bad = true; }
+  if (bad) return;
+  busy(formReg, true, 'Creating account…');
+  const r = await api('/api/auth/register', { username, password, confirm });
+  busy(formReg, false);
+  if (r.ok && r.data && r.data.user) {
+    pendingUser = r.data.user; formReg.reset();
+    $('#doneId').textContent = pendingUser.id.replace(/(\d{4})(\d{4})/, '$1 $2');
+    authEl.dataset.view = 'done'; authDone.hidden = false; replay(authDone, 'fade-in');
+  } else showError(formReg, r);
+});
+$('#doneCopy').addEventListener('click', async () => {
+  const b = $('#doneCopy');
+  try { await navigator.clipboard.writeText(pendingUser.id); b.textContent = 'Copied'; } catch (e) { b.textContent = 'Select and copy'; }
+  setTimeout(() => { b.textContent = 'Copy ID'; }, 1600);
+});
+$('#doneGo').addEventListener('click', () => enterApp(pendingUser));
+
+/* Signed-in user -> sidebar footer */
+function setMe(u) {
+  const av = $('#meAv'); av.style.setProperty('--h', parseInt(u.id, 10) % 360);
+  av.firstElementChild.textContent = u.username.slice(0, 2).toUpperCase();
+  $('#meName').textContent = u.username; $('#meId').textContent = 'ID ' + u.id;
+}
+$('#btnLogout').addEventListener('click', async () => { await api('/api/auth/logout', {}); location.reload(); });
+
+function enterApp(user) {
+  setMe(user);
+  authEl.classList.add('leaving');                      // 380ms fade, then removed from the tree
+  setTimeout(() => { authEl.hidden = true; }, 400);
+  startApp();
+}
+async function initAuth() {
+  const r = await api('/api/auth/me');
+  if (r.ok && r.data && r.data.user) { enterApp(r.data.user); return; }
+  setMode('login');
+  authEl.dataset.state = 'form';                         // card fades/slides in
+  if (r.data && r.data.error && r.data.error.code === 'misconfigured') formErr(formLogin, r.data.error.message);
+  setTimeout(() => formLogin.identifier.focus({ preventScroll: true }), 350);
+}
+
+/* ==========================================================================
+   BOOT — runs only after sign-in. Skeleton first, then content fades in.
+   ========================================================================== */
+let started = false;
+function startApp() {
+  if (started) return; started = true;
+  app.dataset.sidebar = 'open';
+  app.dataset.info = mqInfo.matches ? 'open' : 'closed';
+  syncButtons();
+  listSkeleton();
+  openConversation('mira', { initial: true });
+  setTimeout(() => { renderList(); renderRequests(); $('#convList').classList.add('fade-in'); }, 700);
+  scheduleIncoming(true);
+  // Load my friends + pending requests so the list and the "Friend requests"
+  // group populate. Runs in the background; no UI blocks on it.
+  loadFriends();
+  // Presence heartbeat + KV-delivery fallback: one beat/sec (so other devices
+  // see me online) and one KV-sync + presence poll/sec (so I pick up any
+  // messages the peer wrote to KV while P2P wasn't live, and so presence
+  // stays correct between P2P connect/disconnect).
+  heartbeatLoop();
+  syncLoop();
+}
+initAuth();
+})();
+</script>
+</body>
+</html>
