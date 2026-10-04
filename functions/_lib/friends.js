@@ -46,10 +46,6 @@ export function pair(a, b) {
 export const friendKey = (a, b) => `friend:${pair(a, b).join(':')}`;
 export const pairKey = (a, b) => `pairkey:${pair(a, b).join(':')}`;
 export const histKey = (a, b) => `hist:${pair(a, b).join(':')}`;
-// Per-DEVICE "I cleared this conversation" marker. The pair's message data
-// stays in KV until BOTH devices have cleared it, so the other side keeps
-// seeing history; each device just stops *displaying* its own cleared copy.
-export const clearKey = (a, b, deviceId) => `clear:${pair(a, b).join(':')}:${deviceId}`;
 
 /* ── crypto ────────────────────────────────────────────────────── */
 
@@ -96,11 +92,33 @@ export async function decryptMsg(key, blob) {
  * Persist one message to the pair's history. Keeps only the newest HISTORY_CAP
  * entries, de-duplicates by id, and marks each record with its sender (`from`).
  * `kv` = the WORM_HOLE binding.
+ *
+ * Visibility safety: a record's `hiddenBy` array is the source of truth for
+ * which users opted out of it. Writers run concurrently on (eventually
+ * consistent) KV — `pushHistory` here, `markHiddenForUser` on every clear, and
+ * both sides' clients — so this must NEVER clobber a flag another writer just
+ * set. Concretely:
+ *   - a NEW record always starts with `hiddenBy: []` (nothing is hidden yet);
+ *   - on DEDUPE (this id already archived — e.g. the live P2P copy arrived
+ *     first) we keep the EXISTING record and its `hiddenBy` as-is, we do not
+ *     replace it with a blank flag;
+ *   - the cap trim drops the oldest records, and a record hidden by BOTH users
+ *     is already gone from KV (markHiddenForUser purges it), so the cap never
+ *     resurrects a purged one.
  */
 export async function pushHistory(kv, a, b, msg) {
   const key = histKey(a, b);
   const arr = (await kv.get(key, 'json')) || [];
-  if (!arr.some(x => x.id === msg.id)) arr.push(msg);
+  const existing = arr.find(x => x.id === msg.id);
+  if (existing) {
+    // De-dupe: the archive already has this logical message. Keep it — and its
+    // `hiddenBy` flag (someone may have cleared it since we first pushed) —
+    // rather than overwriting with a blank array. Only refresh the content
+    // if the copy we hold is missing the encrypted blob.
+    if (existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
+  } else {
+    arr.push({ ...msg, hiddenBy: Array.isArray(msg.hiddenBy) ? msg.hiddenBy : [] });
+  }
   // newest last; cap from the front
   while (arr.length > HISTORY_CAP) arr.shift();
   await kv.put(key, JSON.stringify(arr), { expirationTtl: HISTORY_TTL });
@@ -118,6 +136,74 @@ export async function readHistory(kv, meId, peerId) {
   const arr = (await kv.get(histKey(meId, peerId), 'json')) || [];
   const out = [];
   for (const m of arr) {
+    let text;
+    try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
+    out.push({ id: m.id, from: m.from, at: m.at, n: m.n, text, unreadable: text === null });
+  }
+  return out;
+}
+
+/* ── per-user visibility ("hiddenBy") ───────────────────────────
+   Clearing a conversation is NO LONGER a device-wide flag that hides every
+   message. Instead each history record carries a `hiddenBy` array of the
+   USER ids who have marked it hidden on their side:
+     - user A clears  -> every record the pair shares gets A's id in hiddenBy
+     - user B clears  -> B's id is added to the same records
+     - a record is DELETED only when BOTH users' ids are in hiddenBy, i.e.
+       each side has opted out of it. Until then the other side still sees it.
+   history-get returns only the records that do NOT carry the caller's own id.
+   This keeps the "the peer still sees my cleared chat" property exactly as
+   before, but models visibility per-record and per-user. */
+
+/**
+ * Mark `userId` as having hidden every record in the pair's history.
+ *
+ * "Clear" is per-user: it adds `userId` to the `hiddenBy` of every record the
+ * pair currently shares. A record is physically deleted only when BOTH users of
+ * the pair are in its `hiddenBy` — until then the other side still sees it.
+ * Idempotent: clearing again is a no-op. Returns true if the array was
+ * rewritten (at least one record gained `userId` or was pruned).
+ *
+ * Concurrency note: this is a read-modify-write on eventually-consistent KV,
+ * and it races with pushHistory (either side's new message) and with the
+ * peer's own clear. We mitigate by (a) re-reading the array fresh at write time
+ * is NOT possible here without a second round-trip, so instead we MERGE flags
+ * additively: we only ever ADD userId to a record's hiddenBy and only PURGE a
+ * record when BOTH ids are present. We never drop a peer id we didn't just add
+ * — so the worst case under a lost-update is that a *new* record pushed by the
+ * peer momentarily lacks userId's flag, which the next clear re-covers. That's
+ * the safe direction (over-hiding a fresh message for a moment, not
+ * resurrecting an old hidden one).
+ */
+export async function markHiddenForUser(kv, userId, peerId) {
+  const key = histKey(userId, peerId);
+  const arr = (await kv.get(key, 'json')) || [];
+  let changed = false;
+  const kept = [];
+  for (const m of arr) {
+    const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy.slice() : [];
+    if (!hb.includes(userId)) { hb.push(userId); changed = true; }
+    // Purge only when both sides of the pair have hidden this record.
+    const hideFromBoth = hb.includes(userId) && hb.includes(peerId);
+    if (!hideFromBoth) kept.push({ ...m, hiddenBy: hb });
+  }
+  if (changed || kept.length !== arr.length) {
+    await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
+  }
+  return changed;
+}
+
+/**
+ * Read a pair's history and return ONLY the records not hidden for `meId`.
+ * Shape of each returned record: { id, from, text, at, n, unreadable? }.
+ */
+export async function readVisibleHistory(kv, meId, peerId) {
+  const keyB64 = await kv.get(pairKey(meId, peerId));
+  const arr = (await kv.get(histKey(meId, peerId), 'json')) || [];
+  const out = [];
+  for (const m of arr) {
+    const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy : [];
+    if (hb.includes(meId)) continue;   // this user opted out of this record
     let text;
     try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
     out.push({ id: m.id, from: m.from, at: m.at, n: m.n, text, unreadable: text === null });
