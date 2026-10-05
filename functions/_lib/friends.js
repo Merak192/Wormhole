@@ -9,8 +9,12 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  friend:<A>:<B>   (A < B)  ->  JSON { status:"pending"|"friend", by, at }
  *  pairkey:<A>:<B>  (A < B)  ->  JSON { k }   (k = base64url 32-byte AES key)
- *  hist:<A>:<B>     (A < B)  ->  JSON array [{ id, from, c (base64url GCM blob), at, n }]
- *     where c = { v:1, iv, ct, tag } base64url, one record per message (capped)
+ *  hist:<A>:<B>     (A < B)  ->  JSON array
+ *     [{ id, from, c (base64url GCM blob), at,
+ *        hiddenBy:[u], seenBy:[u], readBy:[u] }]
+ *     c = { v:1, iv, ct, tag } base64url, one record per message (capped)
+ *     hiddenBy = users who cleared it; seenBy/readBy = durable receipts
+ *     (readBy ⊇ seenBy), written only by the message's RECEIVER.
  *
  * Live P2P is NOT in KV: the real-time path is a WebRTC DataChannel between the
  * two logged-in devices (DTLS-encrypted). The AES here is what makes the *persisted*
@@ -93,41 +97,76 @@ export async function decryptMsg(key, blob) {
  * entries, de-duplicates by id, and marks each record with its sender (`from`).
  * `kv` = the WORM_HOLE binding.
  *
- * Visibility safety: a record's `hiddenBy` array is the source of truth for
- * which users opted out of it. Writers run concurrently on (eventually
- * consistent) KV — `pushHistory` here, `markHiddenForUser` on every clear, and
- * both sides' clients — so this must NEVER clobber a flag another writer just
- * set. Concretely:
- *   - a NEW record always starts with `hiddenBy: []` (nothing is hidden yet);
- *   - on DEDUPE (this id already archived — e.g. the live P2P copy arrived
- *     first) we keep the EXISTING record and its `hiddenBy` as-is, we do not
- *     replace it with a blank flag;
+ * Receipt safety: a record's `readBy` / `seenBy` arrays are the durable read
+ * state. Both are owned and written ONLY by the *receiver* of the message (via
+ * markAckForUser), and are monotonically-additive user-id sets. Writers run
+ * concurrently on (eventually consistent) KV — `pushHistory` here,
+ * `markHiddenForUser` on every clear, `markAckForUser` on every read/delivered
+ * ack, and both sides' clients — so all three NEVER clobber a flag another
+ * writer just set. Concretely:
+ *   - a NEW record always starts with `hiddenBy:[], seenBy:[], readBy:[]`;
+ *   - `readBy` is a strict superset of `seenBy` (read implies seen);
+ *   - on DEDUPE we keep the EXISTING record and ALL its flags as-is;
  *   - the cap trim drops the oldest records, and a record hidden by BOTH users
- *     is already gone from KV (markHiddenForUser purges it), so the cap never
- *     resurrects a purged one.
+ *     is already gone from KV (markHiddenForUser purges it).
+ * The sender never writes readBy/seenBy — it only READS the peer's membership
+ * (see readVisibleHistory) to compute the tick.
  */
+
+/* De-dupe preserving order. */
+const uniq = ids => Array.from(new Set(ids));
+
+/**
+ * Normalize + merge the per-record receipt flags additively. Guarantees all
+ * three arrays exist (empty on old records) and that "read implies seen".
+ * Shared by pushHistory / markHiddenForUser / markAckForUser so they can't
+ * drift. In-place on `m`'s flag fields; returns `m`.
+ */
+function withFlags(m, { addSeen = [], addRead = [] } = {}) {
+  // Ensure all three flag arrays exist (old records may lack seenBy/readBy)
+  // and merge the new ids in additively.
+  m.hiddenBy = uniq([...(Array.isArray(m.hiddenBy) ? m.hiddenBy : [])]);
+  m.seenBy = uniq([...(Array.isArray(m.seenBy) ? m.seenBy : []), ...addSeen]);
+  m.readBy = uniq([...(Array.isArray(m.readBy) ? m.readBy : []), ...addRead]);
+  // read implies seen: anything read must also be seen.
+  m.seenBy = uniq([...m.seenBy, ...m.readBy]);
+  return m;
+}
+
+/** A record purges only when BOTH users of the pair have hidden it. */
+function isPurged(m, a, b) {
+  const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy : [];
+  return hb.includes(a) && hb.includes(b);
+}
+
 export async function pushHistory(kv, a, b, msg) {
   const key = histKey(a, b);
   const arr = (await kv.get(key, 'json')) || [];
   const existing = arr.find(x => x.id === msg.id);
   if (existing) {
-    // De-dupe: the archive already has this logical message. Keep it — and its
-    // `hiddenBy` flag (someone may have cleared it since we first pushed) —
-    // rather than overwriting with a blank array. Only refresh the content
-    // if the copy we hold is missing the encrypted blob.
+    // De-dupe: the archive already has this logical message. Keep it — and all
+    // of its receipt/hidden flags (an ack or clear may have landed since we
+    // first pushed) — rather than overwriting them with blank arrays. Only
+    // refresh the content if the copy we hold is missing the encrypted blob.
     if (existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
+    withFlags(existing);   // normalize (backfill seenBy/readBy on old records)
   } else {
-    arr.push({ ...msg, hiddenBy: Array.isArray(msg.hiddenBy) ? msg.hiddenBy : [] });
+    const rec = { id: msg.id, from: msg.from, c: msg.c, at: msg.at };
+    withFlags(rec, {});   // -> hiddenBy/seenBy/readBy all []
+    arr.push(rec);
   }
-  // newest last; cap from the front
+  // newest last; cap from the front; drop both-hidden records.
   while (arr.length > HISTORY_CAP) arr.shift();
-  await kv.put(key, JSON.stringify(arr), { expirationTtl: HISTORY_TTL });
-  return arr;
+  const kept = arr.filter(m => !isPurged(m, a, b));
+  await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
+  return kept;
 }
 
 /**
  * Read a pair's history and decrypt it for the given me/peer pair.
- * Returns [{ id, from, text, at, n, unreadable? }] oldest->newest.
+ * Returns [{ id, from, at, text, seen, read, unreadable? }] oldest->newest,
+ * where `seen`/`read` are resolved against `peerId` (the other side): for a
+ * record with from === peerId they report whether that peer has seen/read it.
  * Records the caller can't decrypt (e.g. pair key rotated / corrupted) are
  * kept with unreadable:true rather than dropped, so the UI can show a placeholder.
  */
@@ -138,7 +177,17 @@ export async function readHistory(kv, meId, peerId) {
   for (const m of arr) {
     let text;
     try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
-    out.push({ id: m.id, from: m.from, at: m.at, n: m.n, text, unreadable: text === null });
+    out.push({
+      id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      // Did the PEER see/read a record the peer SENT (from === peerId)? The
+      // receiver-side ack of the peer's own message.
+      seen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
+      read: m.from === peerId && (Array.isArray(m.readBy) ? m.readBy : []).includes(peerId),
+      // Did the PEER see/read a record I SENT (from === meId)? The tick state
+      // of MY outgoing message — what the sender's UI restores across refresh.
+      peerSeen: m.from === meId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
+      peerRead: m.from === meId && (Array.isArray(m.readBy) ? m.readBy : []).includes(peerId),
+    });
   }
   return out;
 }
@@ -185,7 +234,13 @@ export async function markHiddenForUser(kv, userId, peerId) {
     if (!hb.includes(userId)) { hb.push(userId); changed = true; }
     // Purge only when both sides of the pair have hidden this record.
     const hideFromBoth = hb.includes(userId) && hb.includes(peerId);
-    if (!hideFromBoth) kept.push({ ...m, hiddenBy: hb });
+    if (hideFromBoth) continue;
+    // Write the merged hiddenBy back onto the record, then preserve the
+    // receipt flags through the rewrite (withFlags is additive + "read
+    // implies seen", and backfills seenBy/readBy on old records).
+    m.hiddenBy = hb;
+    withFlags(m);
+    kept.push(m);
   }
   if (changed || kept.length !== arr.length) {
     await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
@@ -194,8 +249,45 @@ export async function markHiddenForUser(kv, userId, peerId) {
 }
 
 /**
+ * Record a receipt from `userId` for a set of message ids in the pair's
+ * history. `kind` is 'seen' (delivered) or 'read' (actually viewed; a read
+ * also counts as seen). Only the RECEIVER writes these flags; the sender
+ * later reads the peer's membership (readVisibleHistory) to flip the tick.
+ *
+ * Additive + idempotent: re-acking is a no-op, and unknown ids are ignored
+ * (a stale/early ack that raced a not-yet-archived record just gets re-sent
+ * on the next poll, so it self-heals). Returns true if the array was rewritten.
+ */
+export async function markAckForUser(kv, userId, peerId, ids, kind) {
+  const key = histKey(userId, peerId);
+  const arr = (await kv.get(key, 'json')) || [];
+  const want = new Set(ids);
+  let changed = false;
+  for (const m of arr) {
+    if (!want.has(m.id)) continue;
+    if (kind === 'read') {
+      const read = Array.isArray(m.readBy) ? m.readBy : [];
+      if (!read.includes(userId)) { read.push(userId); changed = true; }
+      withFlags(m, { addSeen: [userId], addRead: [userId] });
+    } else {
+      const seen = Array.isArray(m.seenBy) ? m.seenBy : [];
+      if (!seen.includes(userId)) { seen.push(userId); changed = true; }
+      withFlags(m, { addSeen: [userId] });
+    }
+  }
+  if (changed) {
+    await kv.put(key, JSON.stringify(arr), { expirationTtl: HISTORY_TTL });
+  }
+  return changed;
+}
+
+/**
  * Read a pair's history and return ONLY the records not hidden for `meId`.
- * Shape of each returned record: { id, from, text, at, n, unreadable? }.
+ * Each returned record also carries `seen`/`read` booleans resolved against
+ * `peerId` (the other side): for a record where from === peerId, they report
+ * whether that peer has seen/read it. This is what the sender's client uses
+ * to restore ticks durably across refresh / device change.
+ * Shape of each returned record: { id, from, at, text, seen, read, unreadable? }.
  */
 export async function readVisibleHistory(kv, meId, peerId) {
   const keyB64 = await kv.get(pairKey(meId, peerId));
@@ -206,7 +298,17 @@ export async function readVisibleHistory(kv, meId, peerId) {
     if (hb.includes(meId)) continue;   // this user opted out of this record
     let text;
     try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
-    out.push({ id: m.id, from: m.from, at: m.at, n: m.n, text, unreadable: text === null });
+    out.push({
+      id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      // Did the PEER see/read a record the peer SENT (from === peerId)? The
+      // receiver-side ack of the peer's own message.
+      seen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
+      read: m.from === peerId && (Array.isArray(m.readBy) ? m.readBy : []).includes(peerId),
+      // Did the PEER see/read a record I SENT (from === meId)? The tick state
+      // of MY outgoing message — what the sender's UI restores across refresh.
+      peerSeen: m.from === meId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
+      peerRead: m.from === meId && (Array.isArray(m.readBy) ? m.readBy : []).includes(peerId),
+    });
   }
   return out;
 }
