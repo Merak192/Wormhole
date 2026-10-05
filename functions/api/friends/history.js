@@ -50,7 +50,10 @@ export async function onRequestPost({ request, env }) {
 
   const c = await encryptMsg(pk, text);
   const msgId = clientMsgId || genId();
-  const msg = { id: msgId, from: me.id, c, at: Date.now(), n: 1 };
+  // Receipt arrays start empty; the RECEIVER adds their own id to seenBy/readBy
+  // via /api/friends/ack later (see _lib/friends.js: markAckForUser). `hiddenBy`
+  // is filled by clear.js; the record is purged once BOTH users have hidden it.
+  const msg = { id: msgId, from: me.id, c, at: Date.now() };
   await pushHistory(env.WORM_HOLE, me.id, uuid, msg);
-  return json({ ok: true, msg: { id: msg.id, from: msg.from, at: msg.at, n: msg.n } }, 201);
+  return json({ ok: true, msg: { id: msg.id, from: msg.from, at: msg.at } }, 201);
 }

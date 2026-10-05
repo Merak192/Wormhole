@@ -1,6 +1,6 @@
 /**
  * GET /api/friends/history-get?uuid=<8 digits>
- * 200 { ok, key, msgs:[{ id, from, text, at, unreadable? }] }
+ * 200 { ok, key, msgs:[{ id, from, at, text, seen, read, unreadable? }] }
  *
  * `key` is the pair's AES-256 key (base64url) — returned to the *authenticated
  * owner* so their browser can decrypt the blobs client-side. A KV reader that
@@ -11,6 +11,14 @@
  * The caller's browser merges this into its in-memory list by id, so the
  * "cleared conversation" state is what the server returns — there is no
  * separate client-side "cleared" lock anymore.
+ *
+ * `seen`/`read` are the durable receipt state, resolved against the peer:
+ * for a record the peer sent (`from === uuid`) they report whether that peer
+ * has delivered / read it. `peerSeen`/`peerRead` are the inverse — for a
+ * record *I* sent, whether the peer has delivered / read it. The caller's
+ * client uses these to restore tick state across refresh / device change,
+ * even when P2P is down (see POST /api/friends/ack, where the receiver
+ * writes them).
  */
 import { ID_RE, json, fail, guard, getSessionUser } from '../../_lib/auth.js';
 import { friendKey, pairKey, readVisibleHistory } from '../../_lib/friends.js';
