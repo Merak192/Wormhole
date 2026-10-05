@@ -1210,6 +1210,7 @@ function renderMessages() {
   messages.scrollTop = messages.scrollHeight;
   if (csearch.classList.contains('open')) runSearch();
   syncTyping();
+  armReadObserver();   // visibility-gated read receipts for this freshly-painted thread
 }
 function appendMessage(m, { delay = 0 } = {}) {
   // If the pane isn't painted yet (thread null during a skeleton or a peer
@@ -1219,8 +1220,12 @@ function appendMessage(m, { delay = 0 } = {}) {
   $('.empty', thread)?.remove();
   const prev = $$('.msg[data-mid]', thread).pop();
   if (!prev || !sameDay(new Date(+prev.dataset.t), m.t)) thread.insertBefore(dayEl(m.t), $('.typing-row', thread));
-  thread.insertBefore(msgEl(m, { enter: true, delay }), $('.typing-row', thread));
+  const el = msgEl(m, { enter: true, delay });
+  thread.insertBefore(el, $('.typing-row', thread));
   markGroups();
+  // Watch the new row so it earns a read receipt the moment it scrolls into
+  // view (delivered-only if the user is scrolled up or the chat isn't active).
+  readIO?.observe(el);
   // A message just filled a previously-empty conversation: if the peer is
   // still typing, the three-dot row can now live on the real thread, so show
   // it (it was suppressed while the pane was on the "No messages" placeholder).
@@ -1228,6 +1233,40 @@ function appendMessage(m, { delay = 0 } = {}) {
 }
 /* Drop the .enter class once finished so no will-change lingers */
 messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
+
+/* ==========================================================================
+   READ-RECEIPT VISIBILITY
+   "Read" is gated on the message actually being scrolled into the active
+   chat's viewport (IntersectionObserver over the active thread's .msg rows),
+   NOT on the chat tab being active. A row the user scrolls past / a chat the
+   user isn't viewing never earns a "read" — it stays "delivered" until
+   actually seen. When a peer's row first intersects, we fire the read
+   receipt (P2P fast path + durable KV ack) exactly once.
+   ========================================================================== */
+let readIO = null;               // active observer for the current thread
+const readObserved = new Set();  // row ids already fired for (per re-open)
+function armReadObserver() {
+  // One observer per thread (re-created on each renderMessages/openConversation).
+  if (readIO) readIO.disconnect();
+  readObserved.clear();
+  readIO = new IntersectionObserver(entries => {
+    const c = cur(); if (!c?.friend) return;
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const row = e.target; const mid = row.dataset.mid;
+      if (readObserved.has(mid)) continue;
+      readObserved.add(mid);
+      const m = c.messages.find(x => x.id === mid);
+      // Only a peer's message that hasn't been read yet earns a receipt.
+      if (m && m.from === 'them' && m.status !== 'read') {
+        setStatus(c, m, 'read');
+        sendReadReceipt(c.friendId, 'read', [mid]);   // instant
+        sendAck(c.friendId, 'read', [mid]);            // durable
+      }
+    }
+  }, { root: messages, threshold: 0.5 });
+  $$('.msg[data-mid]', thread).forEach(r => readIO.observe(r));
+}
 
 /* Typing indicator row */
 function showTypingRow() {
@@ -1321,11 +1360,20 @@ function openConversation(id, { initial = false } = {}) {
     // real time. Non-blocking: if Trystero is still loading the CDN or the
     // peer hasn't connected yet, the first p2pSend establishes it on demand.
     void ensureP2P(c.id);
-    // I'm now *in* the chat with this peer: any of their messages I haven't
-    // yet acknowledged become "read" from their side. Send a read receipt for
-    // the last few their-side messages so they flip to a double tick.
-    const unreadFromThem = c.messages.filter(x => x.from === 'them').slice(-20).map(x => x.id);
-    if (unreadFromThem.length) sendReadReceipt(c.id, 'read', unreadFromThem);
+    // Opening the chat makes their unacknowledged messages DELIVERED to me
+    // (single tick), not read — "I'm on the tab" alone isn't "I read it".
+    // The IntersectionObserver (armReadObserver) fires "read" per message the
+    // moment that specific bubble is actually in the viewport. Send "seen" for
+    // the recent batch so the sender's tick moves off "sent"; the IO handles
+    // the upgrade to "read" with durable acks.
+    const deliveredFromThem = c.messages.filter(x => x.from === 'them' && x.status !== 'read').slice(-20).map(x => x.id);
+    if (deliveredFromThem.length) {
+      sendReadReceipt(c.id, 'seen', deliveredFromThem);
+      sendAck(c.id, 'seen', deliveredFromThem);
+    }
+    // Opening + viewing the conversation clears my unread badge for this peer;
+    // the ticks themselves are driven by delivered/read, not by unread.
+    c.unread = 0; patchRow(c);
   }
   if (!initial && !mqSb.matches) setPanel('sidebar', false);
   $('#toBottom').classList.remove('show');
@@ -1927,6 +1975,21 @@ function sendReadReceipt(peerId, kind, ids) {
   // single tick until they're back and actually read.
 }
 
+/* ---- Durable receipt write (KV fallback + source of truth) ----
+   ALWAYS issued, never gated on P2P state: it's the archive that a down
+   P2P channel, a refresh, or a second device can still recover from. The
+   P2P receipt above is the fast path; this one makes it stick. Batches up
+   to MAX_ACK the caller hands over, capped to match the server. */
+const MAX_ACK = 50;
+function sendAck(peerId, kind, ids) {
+  const me = meId();
+  if (!me || !peerId || !ids.length) return;
+  const slice = ids.slice(0, MAX_ACK);
+  // Fire-and-forget: a failed ack silently degrades to the peer's P2P receipt
+  // (or a re-send on the next poll). No toast on every ack.
+  void api('/api/friends/ack', { uuid: peerId, kind, ids: slice });
+}
+
 /* ---- Send a "peer is typing" signal over P2P ----
    Best-effort: typing only matters in real time, so we gate on the channel
    being 'open' (like sendReadReceipt) and do NOT queue it. If the peer's
@@ -2049,16 +2112,42 @@ async function loadHistory(peerId) {
     if (!r.ok || !r.data) return false;   // keep whatever is in memory
     keys.set(peerId, r.data.key);
     const have = new Set(c.messages.map(x => x.id));
+    // Also collect what I already hold, so I can UPGRADE ticks for messages
+    // the peer has since read/delivered (durable half of the receipt fix):
+    // a peer who came back online and read an old message flips my tick even
+    // though P2P was down when they did it.
+    const local = new Map(c.messages.map(x => [x.id, x]));
     const incoming = (r.data.msgs || [])
       .map(m => ({
         id: m.id, from: m.from === meId() ? 'me' : 'them',
         text: m.unreadable ? '[unreadable message]' : (typeof m.text === 'string' ? m.text : ''),
-        t: new Date(+m.at || Date.now()), status: 'read',
+        t: new Date(+m.at || Date.now()),
+        // Durably restore MY tick from the peer's persisted receipts. For
+        // messages I sent (from 'me'), the server resolves peerRead/peerSeen
+        // against the peer: read>delivered>sent. For peer-sent rows use the
+        // plain read/seen (my own receipt of their message) — but the UI only
+        // draws ticks on my own bubbles, so 'them' rows default to 'read'.
+        status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : 'read',
       }))
-      .filter(m => m.text && !have.has(m.id));
-    if (!incoming.length) return false;
+      .filter(m => m.text);
+    // (1) Brand-new records I don't hold -> append.
+    const fresh = incoming.filter(m => !have.has(m.id));
+    // (2) Records I already hold -> upgrade tick only (never downgrade).
+    // A peer who came back online and read/delivered an old message flips my
+    // tick even though P2P was down when they did it (durable receipt path).
+    incoming.forEach(m => {
+      const lm = local.get(m.id);
+      if (lm && m.from === 'me') {
+        const rank = { sent: 0, delivered: 1, read: 2 };
+        if ((rank[m.status] ?? 0) > (rank[lm.status] ?? 0)) {
+          setStatus(c, lm, m.status);
+          if (peerId === state.active) renderMessages();
+        }
+      }
+    });
+    if (!fresh.length) return false;
     // Append the new ones and keep the whole thing in time order.
-    c.messages = c.messages.concat(incoming).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1));
+    c.messages = c.messages.concat(fresh).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1));
     persistMessages(c);   // keep the localStorage mirror in step
     return true;   // new content arrived
   } catch (e) { return false; }   // offline / no server; in-memory is kept
@@ -2251,7 +2340,10 @@ function receiveFromPeer(peerId, raw) {
     from: 'them',
     text,
     t: new Date(atMs),
-    status: 'read',
+    // A just-received message is at best "delivered". It only becomes "read"
+    // once it's actually visible in the viewport (see the IntersectionObserver
+    // above). Default to delivered so the tick doesn't over-claim.
+    status: 'delivered',
   };
   if (!c.messages.some(x => x.id === m.id)) c.messages.push(m);
   persistMessages(c);   // keep the localStorage mirror in step (fast reopen)
@@ -2259,16 +2351,26 @@ function receiveFromPeer(peerId, raw) {
   // Clear any lingering indicator on this peer so the three dots don't stick.
   if (c.typing) setTyping(c, false);
   const isActive = peerId === state.active;
+  // "Visible" = the active chat is at the bottom (auto-scrolls the new bubble
+  // into view) AND the row will actually be in the viewport. If we're not
+  // at the bottom (user reading history) or not on this chat, the message is
+  // only DELIVERED — it earns "read" later via the IntersectionObserver.
+  const willBeVisible = isActive && nearBottom();
   if (isActive) appendMessage(m);
   else c.unread += 1;
   patchRow(c, { pulse: !isActive && !c.muted });
   if (isActive) requestAnimationFrame(() => scrollBottom(true));
 
-  // Acknowledge to the SENDER. A "read" receipt (their double tick) is only
-  // sent while we are actively in the chat with them; otherwise a "seen"
-  // receipt gives them a single (delivered) tick.
-  if (isActive) sendReadReceipt(peerId, 'read', [m.id]);
-  else          sendReadReceipt(peerId, 'seen', [m.id]);
+  // Acknowledge to the SENDER. Always send a durable "seen" (delivered) so the
+  // tick is real-time. When the message will genuinely be visible, also fire
+  // "read" now; the IO still re-fires it on actual intersection (idempotent).
+  sendReadReceipt(peerId, 'seen', [m.id]);
+  sendAck(peerId, 'seen', [m.id]);
+  if (willBeVisible) {
+    setStatus(c, m, 'read');
+    sendReadReceipt(peerId, 'read', [m.id]);
+    sendAck(peerId, 'read', [m.id]);
+  }
 }
 
 
