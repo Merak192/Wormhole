@@ -1259,12 +1259,13 @@ function armReadObserver() {
       const m = c.messages.find(x => x.id === mid);
       // Only a peer's message that hasn't been read yet earns a receipt.
       if (m && m.from === 'them' && m.status !== 'read') {
+        console.log(`[wh tick] IO read @ ${c.name}: ${mid} (row 90% in viewport)`);
         setStatus(c, m, 'read');
         sendReadReceipt(c.friendId, 'read', [mid]);   // instant
         sendAck(c.friendId, 'read', [mid]);            // durable
       }
     }
-  }, { root: messages, threshold: 0.5 });
+  }, { root: messages, threshold: 0.9 });
   $$('.msg[data-mid]', thread).forEach(r => readIO.observe(r));
 }
 
@@ -1747,12 +1748,18 @@ async function syncLoop() {
     presenceOnline.set(f.id, online ? 'online' : 'offline');
     setP2pPresenceFromPoll(f.id, online);
   }
-  // 2) KV sync: poll every friend whose P2P channel is NOT confirmed open.
-  //    "open" = a live, ping-verified channel (the peer is answering pings).
-  //    'connect'/'closed' means P2P can't be trusted to deliver right now, so
-  //    the KV archive is the source of truth and we poll it every tick.
+  // 2) KV sync: poll the KV archive for peers whose P2P channel is NOT open
+  //    (it's the only delivery path then), PLUS — less often — peers whose P2P
+  //    IS open, because read/delivered receipts are the one thing P2P does not
+  //    reliably carry: a peer who was offline, or who read a message while the
+  //    sender's own channel was down, writes the receipt to KV (sendAck) and
+  //    the sender only learns it by polling. Re-poll open peers every few
+  //    seconds so their tick state catches up without hammering the archive.
+  const openTick = (syncLoop._openTick = (syncLoop._openTick || 0) + 1);
   for (const f of friends) {
-    if (f.p2pState === 'open') continue;   // P2P is live; it delivers new messages
+    const isOpen = f.p2pState === 'open';
+    // Open peers: poll only every 4th tick (~4s). Non-open: every tick (1s).
+    if (isOpen && openTick % 4 !== 0) continue;
     const changed = await refreshFriendHistory(f.id);
     if (changed) patchRow(f);
   }
@@ -1948,7 +1955,13 @@ function handlePeerControl(peerId, raw) {
 // The peer is actively reading these → double tick.
 function markPeerRead(peerId, ids) {
   const c = byId(peerId); if (!c) return;
-  ids.forEach(id => { const m = c.messages.find(x => x.id === id && x.from === 'me'); if (m) setStatus(c, m, 'read'); });
+  ids.forEach(id => {
+    const m = c.messages.find(x => x.id === id && x.from === 'me');
+    if (m && m.status !== 'read') {
+      console.log(`[wh tick] P2P read from ${peerId}: ${id} ${m.status} -> read`);
+      setStatus(c, m, 'read');
+    }
+  });
 }
 // The peer received these but is NOT in the chat → single tick (delivered).
 function markPeerSeen(peerId, ids) {
@@ -1957,7 +1970,10 @@ function markPeerSeen(peerId, ids) {
     const m = c.messages.find(x => x.id === id && x.from === 'me');
     // "delivered" is the default once they've got it; only UPGRADE, never downgrade
     // a message that's already "read" (they read it earlier, then left the view).
-    if (m && m.status !== 'read') setStatus(c, m, 'delivered');
+    if (m && m.status !== 'read' && m.status !== 'delivered') {
+      console.log(`[wh tick] P2P seen from ${peerId}: ${id} ${m.status} -> delivered`);
+      setStatus(c, m, 'delivered');
+    }
   });
 }
 
@@ -1969,10 +1985,11 @@ function markPeerSeen(peerId, ids) {
 function sendReadReceipt(peerId, kind, ids) {
   const entry = p2p.get(peerId);
   if (byId(peerId)?.p2pState === 'open' && entry?.chatAction?.()?.send) {
+    console.log(`[wh tick] P2P send ${kind} -> ${peerId} [${ids.join(', ')}]`);
     entry.chatAction().send({ kind, ids }).catch(() => {});
+  } else {
+    console.log(`[wh tick] P2P ${kind} NOT sent (channel not open) -> ${peerId} [${ids.join(', ')}]`);
   }
-  // Peer not confirmed live; nothing to send. Their client shows the default
-  // single tick until they're back and actually read.
 }
 
 /* ---- Durable receipt write (KV fallback + source of truth) ----
@@ -1987,7 +2004,9 @@ function sendAck(peerId, kind, ids) {
   const slice = ids.slice(0, MAX_ACK);
   // Fire-and-forget: a failed ack silently degrades to the peer's P2P receipt
   // (or a re-send on the next poll). No toast on every ack.
-  void api('/api/friends/ack', { uuid: peerId, kind, ids: slice });
+  api('/api/friends/ack', { uuid: peerId, kind, ids: slice })
+    .then(r => console.log(`[wh tick] KV ack ${kind} -> ${peerId} [${slice.join(', ')}] ${r.ok ? 'OK' : 'FAIL('+((r.data&&r.data.error&&r.data.error.code)||r.status)+')'}`))
+    .catch(() => console.log(`[wh tick] KV ack ${kind} -> ${peerId} [${slice.join(', ')}] NETWORK ERROR`));
 }
 
 /* ---- Send a "peer is typing" signal over P2P ----
@@ -2351,26 +2370,20 @@ function receiveFromPeer(peerId, raw) {
   // Clear any lingering indicator on this peer so the three dots don't stick.
   if (c.typing) setTyping(c, false);
   const isActive = peerId === state.active;
-  // "Visible" = the active chat is at the bottom (auto-scrolls the new bubble
-  // into view) AND the row will actually be in the viewport. If we're not
-  // at the bottom (user reading history) or not on this chat, the message is
-  // only DELIVERED — it earns "read" later via the IntersectionObserver.
-  const willBeVisible = isActive && nearBottom();
   if (isActive) appendMessage(m);
   else c.unread += 1;
   patchRow(c, { pulse: !isActive && !c.muted });
   if (isActive) requestAnimationFrame(() => scrollBottom(true));
 
-  // Acknowledge to the SENDER. Always send a durable "seen" (delivered) so the
-  // tick is real-time. When the message will genuinely be visible, also fire
-  // "read" now; the IO still re-fires it on actual intersection (idempotent).
+  // Delivery, not read. A just-landed message is "delivered" to the sender's
+  // tick the moment it reaches this device — it is NOT yet "read". The
+  // IntersectionObserver (armReadObserver) is the single source of truth for
+  // "read": it fires the read receipt only when this specific bubble is
+  // actually in the viewport. We deliberately do NOT decide "read" here via
+  // nearBottom() — that test ran against the pre-append scroll position and
+  // disagreed with the IO, which is what produced false "read" ticks.
   sendReadReceipt(peerId, 'seen', [m.id]);
   sendAck(peerId, 'seen', [m.id]);
-  if (willBeVisible) {
-    setStatus(c, m, 'read');
-    sendReadReceipt(peerId, 'read', [m.id]);
-    sendAck(peerId, 'read', [m.id]);
-  }
 }
 
 
