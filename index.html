@@ -1653,14 +1653,14 @@ function cacheWriteAll(map) {
 function persistMessages(c) {
   if (!c || !c.friendId) return;
   const map = cacheReadAll();
-  const slim = c.messages.map(m => ({ id: m.id, from: m.from, text: m.text, t: +m.t, status: m.status || 'read' }));
+  const slim = c.messages.map(m => ({ id: m.id, from: m.from, text: m.text, t: +m.t, status: m.status || 'delivered' }));
   if (slim.length) map[c.friendId] = slim; else delete map[c.friendId];
   cacheWriteAll(map);
 }
 function restoreMessages(peer) {
   const c = byId(peer.id); if (!c || c.messages.length) return;
   const slim = (cacheReadAll()[peer.id]) || null; if (!slim) return;
-  c.messages = slim.map(m => ({ id: m.id, from: m.from, text: m.text, t: new Date(m.t), status: m.status || 'read' }));
+  c.messages = slim.map(m => ({ id: m.id, from: m.from, text: m.text, t: new Date(m.t), status: m.status || 'delivered' }));
 }
 function clearCacheFor(peerId) {
   const map = cacheReadAll(); delete map[peerId]; cacheWriteAll(map);
@@ -2143,10 +2143,16 @@ async function loadHistory(peerId) {
         t: new Date(+m.at || Date.now()),
         // Durably restore MY tick from the peer's persisted receipts. For
         // messages I sent (from 'me'), the server resolves peerRead/peerSeen
-        // against the peer: read>delivered>sent. For peer-sent rows use the
-        // plain read/seen (my own receipt of their message) — but the UI only
-        // draws ticks on my own bubbles, so 'them' rows default to 'read'.
-        status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : 'read',
+        // against the peer: read>delivered>sent. For peer-sent rows (from
+        // 'them', i.e. the peer sent them to me) the local tick is irrelevant
+        // (ticks are only drawn on my own bubbles), but the STATUS drives the
+        // IntersectionObserver's "unread -> fire a read receipt" gate, so it
+        // must be 'delivered' NOT 'read': I merely ARCHIVED this message from
+        // KV, I haven't actually viewed it in the viewport yet. Defaulting to
+        // 'read' here is exactly what suppressed the read receipt when the
+        // peer re-pulled history after being offline (bug B) and what made a
+        // never-viewed message count as read (bug A).
+        status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : 'delivered',
       }))
       .filter(m => m.text);
     // (1) Brand-new records I don't hold -> append.
@@ -2299,6 +2305,8 @@ $('#addForm').addEventListener('submit', async e => {
 // P2P is the real-time path; KV is the archive + fallback.
 function sendToFriend(c) {
   const text = input.value.trim(); if (!text) return;
+  // A just-sent message is "sent" (nothing acknowledged yet). It becomes
+  // "delivered"/"read" only when the peer's receipts (P2P or KV) land.
   const m = { id: wireId(), from: 'me', text, t: new Date(), status: 'sent' };
   // 1) Local: paint instantly. The bubble appears in the same tick as the
   //    keystroke — it never waits on the network, so there's no lag.
