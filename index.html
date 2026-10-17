@@ -442,6 +442,57 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .send:active:not(:disabled) { transform: scale(0.96); transition-duration: 70ms; }
 .send:disabled { opacity: 0.28; transform: scale(0.9); cursor: default; }
 
+/* Attach: same borderless footprint as the other composer-adjacent buttons.
+   Sits to the LEFT of the textarea, mirroring the send button's 36px box. */
+.attach {
+  width: 36px; height: 36px; border-radius: 12px; flex: none; display: grid; place-items: center;
+  color: var(--text-2);
+  transition: transform 360ms var(--spring), color var(--t-fast) var(--ease);
+}
+.attach::before { display: none; }                       /* borderless, like logout */
+.attach:hover { color: var(--accent); }
+.attach:active { transform: scale(0.94); transition-duration: 70ms; }
+.attach svg { width: 20px; height: 20px; }
+
+/* ---- File attachment bubbles ------------------------------------------ */
+.fmsg { display: inline-flex; flex-direction: column; gap: 4px; max-width: 280px; }
+.fmsg .thumb {
+  width: 100%; max-width: 240px; max-height: 240px; object-fit: cover; border-radius: 10px 10px 4px 10px;
+  background: var(--sunken); display: block;
+}
+.msg.self .fmsg .thumb { border-radius: 10px 4px 10px 10px; }
+.fmsg video { width: 100%; max-width: 240px; border-radius: 10px 10px 4px 10px; background: #000; }
+.msg.self .fmsg video { border-radius: 10px 4px 10px 10px; }
+.fmsg audio { width: 240px; }
+.frow { display: flex; align-items: center; gap: 8px; }
+.fic {
+  width: 38px; height: 38px; flex: none; border-radius: 9px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+}
+.finfo { min-width: 0; }
+.finfo b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.finfo span { font-size: 12px; color: var(--meta); }
+.self .finfo span { color: var(--meta-self); }
+/* progress bar inside the file bubble */
+.fprog { width: 100%; max-width: 200px; height: 4px; border-radius: 4px; background: var(--line-strong); overflow: hidden; margin-top: 2px; }
+.fprog i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width 120ms var(--ease); border-radius: inherit; }
+/* download affordance for received files whose blob is present */
+.fdl { align-self: flex-start; font-size: 12px; font-weight: 500; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+.fmeta-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 4px; }
+/* pending "incoming file" request row (receiver has not answered yet) */
+.fask { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; }
+.fask-row { display: flex; align-items: center; gap: 8px; }
+.fask-acts { display: flex; gap: 5px; margin-left: auto; }
+.fask-btn {
+  height: 26px; min-width: 26px; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-2);
+  transition: transform 320ms var(--spring), background var(--t-fast) var(--ease);
+}
+.fask-btn:active { transform: scale(0.92); }
+.fask-btn.ok { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+.fask-btn.no:hover { border-color: var(--danger); color: var(--danger); }
+
 /* ---- Info panel ---- */
 .info {
   --ring: var(--surface);
@@ -764,6 +815,8 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 
     <div class="composer">
       <div class="composer-box">
+        <button class="attach" id="btnAttach" aria-label="Attach a file" title="Attach a file" data-ic="clip"></button>
+        <input id="fileInput" type="file" multiple hidden>
         <textarea id="input" rows="1" placeholder="Message" aria-label="Write a message"></textarea>
         <button class="send" id="btnSend" aria-label="Send message" disabled data-ic="arrowUp" data-size="18"></button>
       </div>
@@ -923,6 +976,8 @@ const ICONS = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.01"/>',
   logout: '<path d="M9 4.5H6.5A2.5 2.5 0 0 0 4 7v10a2.5 2.5 0 0 0 2.5 2.5H9"/><path d="m15 8 4 4-4 4"/><path d="M19 12H9.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  clip: '<path d="m20.5 12-6.6 6.6a4.6 4.6 0 0 1-6.5-6.5l6.6-6.6a3.1 3.1 0 0 1 4.4 4.4l-6.6 6.6a1.5 1.5 0 0 1-2.1-2.1l6-6"/>',
+  down: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   check: '<path d="m4.5 12.5 5 5 10-11"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
 };
@@ -974,6 +1029,7 @@ const lastMsg = c => c.messages[c.messages.length - 1];
 function lastPreview(c) {
   const m = lastMsg(c); if (!m) return 'No messages yet';
   if (m.recalled) return m.from === 'me' ? 'You recalled a message' : 'Message recalled';
+  if (m.file) return (m.from === 'me' ? 'You: ' : '') + (m.file.name || 'File');
   // Guard: m.text must be a string; a stray object would render as
   // "[object Object]" in the row.
   const text = typeof m.text === 'string' ? m.text : '(unreadable message)';
@@ -1161,9 +1217,10 @@ function renderInfo(animate) {
         <div class="kv"><div><small>UUID</small><b>${esc(c.id)}</b></div><div><small>Local time</small><b>${localTime(c.tz)}</b></div></div>
       </section>
       <section class="stag" style="--i:3">
-        <div class="sec-title">Shared files <span>0</span></div>
-        <div class="files"><div class="files-empty">No shared files yet.</div></div>
+        <div class="sec-title">Shared files <span id="filesCount">0</span></div>
+        <div class="files" id="filesList"><div class="files-empty">No shared files yet.</div></div>
       </section>`;
+    refreshSharedFiles(c.id);
   }
   // Re-run the stagger-in animation ONLY when switching contacts / opening the
   // panel (animate === true). Data refreshes from the 1s presence/KV poll call
@@ -1175,6 +1232,26 @@ infoBody.addEventListener('click', e => {
   const b = e.target.closest('[data-i]'); if (!b) return;
   if (b.dataset.i === 'mute') toggleMute(); else { if (!mqInfo.matches) setPanel('info', false); setTimeout(openSearch, mqInfo.matches ? 0 : 250); }
 });
+
+/* Populate the "Shared files" section of the contact panel from the KV
+   metadata list (newest first). Only runs when the panel is open; a refresh
+   from the 1s poll re-calls this cheaply. */
+async function refreshSharedFiles(peerId) {
+  if (app.dataset.info !== 'open') return;
+  const list = $('#filesList'), count = $('#filesCount');
+  if (!list || peerId !== cur()?.id) return;
+  const files = await loadFileMeta(peerId);
+  const sorted = [...files].sort((a, b) => b.at - a.at);
+  count.textContent = String(sorted.length);
+  if (!sorted.length) { list.innerHTML = '<div class="files-empty">No shared files yet.</div>'; return; }
+  list.innerHTML = sorted.map(f => {
+    const ext = (f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+    return `<button class="file" data-sf="${f.fileId}">
+      <span class="file-ic">${esc(ext)}</span>
+      <span class="file-t"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)} · ${f.status === 'sending' ? 'sending…' : f.status}</span></span>
+    </button>`;
+  }).join('');
+}
 
 /* ==========================================================================
    MESSAGES
@@ -1189,11 +1266,57 @@ toBottom.addEventListener('click', () => scrollBottom(true));
 
 function bubbleHTML(m) {
   if (m.recalled) return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span></div>`;
+  const meta = `<span class="meta"><time>${fmtTime(m.t)}</time>${m.from === 'me' ? tick(m.status) : ''}</span>`;
+  // File attachments get their own bubble shape; text falls through to the
+  // standard [object Object] guard below.
+  if (m.file) return fileBubbleHTML(m, meta);
   // The P2P wire sends {id, text, at}; a malformed payload could carry a
   // non-string text — never let an object render as "[object Object]".
   const text = typeof m.text === 'string' && m.text ? m.text : '[unreadable message]';
-  const meta = `<span class="meta"><time>${fmtTime(m.t)}</time>${m.from === 'me' ? tick(m.status) : ''}</span>`;
   return `<div class="bubble"><span class="txt">${esc(text)}</span>${meta}</div>`;
+}
+/* Classify a MIME type / filename for bubble rendering. Returns one of
+   'image' | 'video' | 'audio' | 'file'. Drives inline vs card display. */
+function classifyFile(type, name) {
+  const t = type || '';
+  if (t.startsWith('image/')) return 'image';
+  if (t.startsWith('video/')) return 'video';
+  if (t.startsWith('audio/')) return 'audio';
+  const ext = (name || '').split('.').pop()?.toLowerCase();
+  if (ext && ['png','jpg','jpeg','gif','webp','svg','heic','bmp'].includes(ext)) return 'image';
+  if (ext && ['mp4','webm','mov','m4v','mkv'].includes(ext)) return 'video';
+  if (ext && ['mp3','wav','ogg','m4a','flac','aac'].includes(ext)) return 'audio';
+  return 'file';
+}
+/* Human file size. */
+const fmtBytes = n => {
+  if (!n) return '';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(n >= 100 || i === 0 ? 0 : 1) + ' ' + u[i];
+};
+/* File-attachment bubble. `m.file` = { name, type, size, fileId, status,
+   progress }. Inline preview only when m.blob is present (receiver built it,
+   or it was read back from IndexedDB on reopen); otherwise show a file card
+   with a download button when the blob is available. `status` drives the
+   progress bar: 'sending'/'receiving' -> live bar; 'sent'/'received' -> done;
+   'incomplete' -> broken (transfer aborted mid-flight). */
+function fileBubbleHTML(m, meta) {
+  const f = m.file, kind = classifyFile(f.type, f.name);
+  let body = '';
+  if (m.blob) {
+    if (kind === 'image') body = `<img class="thumb" loading="lazy" alt="${esc(f.name)}" src="${m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob))}">`;
+    else if (kind === 'video') body = `<video class="thumb" controls playsinline src="${m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob))}"></video>`;
+    else if (kind === 'audio') body = `<audio controls src="${m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob))}"></audio>`;
+  }
+  const ext = (f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
+  const dl = m.blob ? `<button class="fdl" data-fdl="${f.fileId}" data-name="${esc(f.name)}">${ic('down', 14)}<span>Download</span></button>` : '';
+  const prog = (f.status === 'sending' || f.status === 'receiving')
+    ? `<div class="fprog"><i data-fprog="${f.fileId}" style="width:${Math.round((f.progress || 0) * 100)}%"></i></div>` : '';
+  const incomplete = f.status === 'incomplete' ? '<span class="finfo"><span>Incomplete transfer</span></span>' : '';
+  return `<div class="bubble fmsg"><div class="frow">${body || `<span class="fic">${ext}</span>`}
+    <div class="finfo"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)}${kind === 'file' ? ' · ' + ext : ''}</span></div></div>
+    ${incomplete || dl || prog ? `<div class="fmeta-row">${incomplete}${dl}${prog}</div>` : ''}${meta}</div>`;
 }
 function actionsHTML(m) {
   if (m.recalled) return '';
@@ -1411,6 +1534,12 @@ function openConversation(id, { initial = false } = {}) {
     restoreMessages(c);
     renderMessages();
     refreshFriendHistory(c.id);
+    // Read back any file Blobs from IndexedDB so previously-received files
+    // render inline again on this device. Fire-and-forget; re-render when it
+    // lands so the bubbles pick up their blobs.
+    rehydrateFileBlobs(c).then(() => {
+      if (c.id === state.active) { c.messages.forEach(m => { if (m.file) m.file.status = m.file.status || 'received'; }); renderMessages(); }
+    });
     // Start (or re-use) the P2P channel to this friend so messages land in
     // real time. Non-blocking: if Trystero is still loading the CDN or the
     // peer hasn't connected yet, the first p2pSend establishes it on demand.
@@ -1721,14 +1850,25 @@ function cacheWriteAll(map) {
 function persistMessages(c) {
   if (!c || !c.friendId) return;
   const map = cacheReadAll();
-  const slim = c.messages.map(m => ({ id: m.id, from: m.from, text: m.text, t: +m.t, status: m.status || 'delivered' }));
+  // Carry file metadata (name/type/size/fileId/status) so the card persists
+  // across a refresh; the BLOB itself lives in IndexedDB (restored by fileId
+  // in rehydrateFileBlobs) and is NOT written to localStorage (too big).
+  const slim = c.messages.map(m => ({
+    id: m.id, from: m.from, text: m.text, t: +m.t,
+    status: m.status || 'delivered',
+    file: m.file ? { ...m.file, progress: m.file.progress } : undefined,
+  }));
   if (slim.length) map[c.friendId] = slim; else delete map[c.friendId];
   cacheWriteAll(map);
 }
 function restoreMessages(peer) {
   const c = byId(peer.id); if (!c || c.messages.length) return;
   const slim = (cacheReadAll()[peer.id]) || null; if (!slim) return;
-  c.messages = slim.map(m => ({ id: m.id, from: m.from, text: m.text, t: new Date(m.t), status: m.status || 'delivered' }));
+  c.messages = slim.map(m => ({
+    id: m.id, from: m.from, text: m.text, t: new Date(m.t),
+    status: m.status || 'delivered',
+    file: m.file || undefined,
+  }));
 }
 function clearCacheFor(peerId) {
   const map = cacheReadAll(); delete map[peerId]; cacheWriteAll(map);
@@ -1842,6 +1982,9 @@ async function syncLoop() {
     if (isOpen && openTick % 4 !== 0) continue;
     const changed = await refreshFriendHistory(f.id);
     if (changed) patchRow(f);
+    // Keep the contact panel's "Shared files" count fresh while it's open —
+    // cheap no-op when the panel is closed (refreshSharedFiles checks that).
+    if (f.id === state.active) refreshSharedFiles(f.id);
   }
   syncTimer = setTimeout(syncLoop, 1000);
 }
@@ -2029,6 +2172,376 @@ async function ensureP2P(peerId) {
   return entry;
 }
 
+/* ==========================================================================
+   FILE ATTACHMENTS
+   ------------------------------------------------------------------------
+   Flow (A picks a file to send to B, both friends with a live P2P channel):
+     A. offer  — A sends { kind:'file-offer', offer } over P2P. B shows an
+                 "incoming file" request row (name/type/size).
+     B. accept — B taps Accept -> { kind:'file-accept', offerId }. A begins
+                 streaming.
+     C. chunks — A slices the File into ~128KB pieces, AES-GCM-encrypts each
+                 with a per-file key (derived from the shared pair key), and
+                 sends { kind:'file-chunk', offerId, i, data (b64) }. B
+                 decrypts + reassembles into a Blob, storing it in IndexedDB
+                 and showing a live progress bar. No content ever touches KV.
+     D. done   — A sends { kind:'file-done', offerId }. B marks the file
+                 'received' in KV metadata + IndexedDB.
+   KV stores METADATA only (name/type/size/fileId/status) so the file keeps
+   appearing in "Shared files" across devices; content lives in IndexedDB on
+   the device that received/sent it.
+
+   Per-file crypto key = HKDF-like expand of (pairKey + random salt). The salt
+   (16B, base64url) rides in the offer so the receiver can reconstruct the
+   exact key without a round-trip. Each chunk gets a fresh 12-byte nonce that
+   is prepended to that chunk's ciphertext, so chunks decrypt independently
+   (a dropped chunk only loses itself, and is simply resent by index).
+   ------------------------------------------------------------------------ */
+
+/* ---- IndexedDB: received/sent file content, keyed by fileId ------------- */
+const IDB_NAME = 'wormhole-files', IDB_STORE = 'files';
+let idbReady = null;
+function idb() {
+  if (idbReady) return idbReady;
+  idbReady = new Promise((res, rej) => {
+    const rq = indexedDB.open(IDB_NAME, 1);
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+  return idbReady;
+}
+async function idbPut(fileId, blob) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put({ fileId, blob, at: Date.now() });
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(fileId) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const rq = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(fileId);
+    rq.onsuccess = () => res(rq.result ? rq.result.blob : null);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+
+/* ---- per-file AES-GCM streaming crypto --------------------------------- */
+const CHUNK = 128 * 1024;          // 128KB plaintext per frame
+const fileXfer = new Map();        // offerId -> { peerId, dir:'send'|'recv', ... }
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveFileKey(pairKeyB64, salt) {
+  // Expand the pair key + a per-file random salt into a fresh 32-byte AES key
+  // so one compromised/dropped file doesn't cross into the others.
+  const base = await crypto.subtle.importKey('raw', fromB64(pairKeyB64), { name: 'AES-GCM' }, false, ['encrypt']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 1000 },
+    base, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  return key;
+}
+
+/* ---- helpers: send a P2P control frame to a peer (target-scoped) ------- */
+function p2pControl(peerId, obj) {
+  const entry = p2p.get(peerId);
+  const send = entry?.chatAction?.()?.send;
+  if (send) send(obj).catch(() => {});
+  return !!send;
+}
+
+/* ---- SENDER: start an offer when the user picks a file ------------------ */
+function offerFileToFriend(c, file) {
+  const offerId = wireId();
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  const offer = {
+    offerId, salt,
+    fileId: offerId,
+    name: file.name, type: file.type || 'application/octet-stream',
+    size: file.size, at: Date.now(),
+  };
+  // Persist metadata now (status 'sending') so it survives a refresh mid-send.
+  void api('/api/files/meta', { uuid: c.friendId, ...offer, status: 'sending' });
+  fileXfer.set(offerId, { peerId: c.friendId, dir: 'send', offer, file, started: false, aborted: false });
+  p2pControl(c.friendId, { kind: 'file-offer', offer });
+}
+
+/* Receiver taps Accept -> tell the sender to start. */
+function acceptFileOffer(peerId, offer) {
+  const rec = {
+    offerId: offer.offerId, peerId, dir: 'recv', offer,
+    received: 0, expected: offer.size, chunks: new Map(),
+  };
+  fileXfer.set(offer.offerId, rec);
+  p2pControl(peerId, { kind: 'file-accept', offerId: offer.offerId });
+  // Seed the "incoming file" bubble row so progress has somewhere to render.
+  upsertFileRow(peerId, rec, { status: 'incoming' });
+}
+
+function rejectFileOffer(peerId, offerId) {
+  const rec = fileXfer.get(offerId);
+  if (rec && rec.dir === 'recv') rec.aborted = true;
+  p2pControl(peerId, { kind: 'file-reject', offerId });
+  dropFileRow(peerId, offerId);
+}
+
+/* ---- SENDER: begin streaming on accept --------------------------------- */
+async function handleFileAccept(peerId, offerId) {
+  const rec = fileXfer.get(offerId);
+  if (!rec || rec.dir !== 'send' || rec.started || rec.aborted) return;
+  rec.started = true;
+  const { offer, file } = rec;
+  const key = await deriveFileKey(keys.get(peerId) || offer.salt, offer.salt);
+  // NOTE: the receiver derives with keys.get() == the pair key; we MUST use
+  // the same base. If the pair key isn't loaded yet, block on it.
+  if (!keys.get(peerId)) {
+    await refreshFriendHistory(peerId);   // populates keys.<peer> from KV
+    if (!keys.get(peerId)) return;
+  }
+  const total = Math.max(1, Math.ceil(file.size / CHUNK));
+  let i = 0;
+  for (; i < total; i++) {
+    if (rec.aborted) break;
+    const slice = file.slice(i * CHUNK, Math.min(file.size, (i + 1) * CHUNK));
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce }, key, await slice.arrayBuffer()));
+    const frame = new Uint8Array(12 + ct.length);
+    frame.set(nonce, 0); frame.set(ct, 12);
+    await sendChunk(peerId, { kind: 'file-chunk', offerId, i, total, last: i + 1 === total,
+      data: b64(frame) });
+    if (i === 0 || (i + 1) % 10 === 0 || i + 1 === total) {
+      upsertFileRow(peerId, rec, { status: 'sending', progress: (i + 1) / total });
+    }
+    await new Promise(r => setTimeout(r, 0));   // yield; keep UI + pings live
+  }
+  if (rec.aborted) return;
+  p2pControl(peerId, { kind: 'file-done', offerId, status: 'sent' });
+  upsertFileRow(peerId, rec, { status: 'sent', progress: 1 });
+  void api('/api/files/meta', { uuid: peerId, ...offer, status: 'sent' });
+}
+
+/* Sender-side chunk send with a tiny retry (chunk drops only lose itself). */
+async function sendChunk(peerId, frame, tries = 3) {
+  for (let n = 0; n < tries; n++) {
+    if (p2pControl(peerId, frame)) return;
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+
+/* ---- RECEIVER: assemble chunks, decrypt, build Blob -------------------- */
+async function handleFileChunk(peerId, data) {
+  const rec = fileXfer.get(data.offerId);
+  if (!rec || rec.dir !== 'recv' || rec.aborted) return;
+  if (data.last) rec.totalChunks = data.total;
+  const raw = fromB64(data.data);
+  const key = await deriveFileKey(keys.get(peerId) || rec.offer.salt, rec.offer.salt);
+  if (!keys.get(peerId)) { await refreshFriendHistory(peerId); if (!keys.get(peerId)) return; }
+  try {
+    const pt = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: raw.subarray(0, 12) }, key, raw.subarray(12));
+    rec.chunks.set(data.i, new Uint8Array(pt));
+    rec.received = rec.chunks.size;
+    const total = rec.totalChunks || (rec.expected ? Math.ceil(rec.expected / CHUNK) : 0);
+    if (total) upsertFileRow(peerId, rec, { status: 'receiving', progress: rec.received / total });
+    // If every chunk has arrived, the sender's file-done will fire; but be
+    // resilient: if we already hold total chunks, finish now.
+    if (total && rec.received >= total) await finishFileReceive(rec);
+  } catch (e) {
+    // A corrupt/resent chunk: drop it and let the sender resend by index.
+    rec.chunks.delete(data.i);
+  }
+}
+
+async function finishFileReceive(rec) {
+  if (rec.done) return; rec.done = true;
+  const ordered = [...rec.chunks.entries()].sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  const blob = new Blob(ordered, { type: rec.offer.type });
+  await idbPut(rec.offer.fileId, blob);
+  upsertFileRow(rec.peerId, rec, { status: 'received', progress: 1, blob });
+  void api('/api/files/meta', { uuid: rec.peerId, fileId: rec.offer.fileId, name: rec.offer.name,
+    type: rec.offer.type, size: rec.offer.size, at: rec.offer.at, status: 'received' });
+}
+
+function handleFileDone(peerId, offerId, status) {
+  const rec = fileXfer.get(offerId);
+  if (!rec || rec.dir !== 'recv') return;
+  if (rec.expected && rec.received >= rec.totalChunks) { /* already finished */ }
+  else upsertFileRow(peerId, rec, { status: status === 'received' ? 'received' : 'incomplete' });
+}
+
+function handleFileReject(peerId, offerId) {
+  const rec = fileXfer.get(offerId);
+  if (rec && rec.dir === 'send') rec.aborted = true;   // sender stops looping
+  dropFileRow(peerId, offerId);
+}
+
+/* ---- incoming-file request rows ---------------------------------------- */
+const pendingOffers = new Map();   // offerId -> { peerId, offer } (unanswered)
+const answeredOffers = new Set();  // offerIds B has already accepted / rejected
+function handleFileOffer(peerId, offer) {
+  if (!offer || !offer.offerId) return;
+  pendingOffers.set(offer.offerId, { peerId, offer });
+  if (peerId === state.active) {
+    renderPendingOffers();
+  } else {
+    patchRow(byId(peerId), { pulse: !byId(peerId)?.muted });
+  }
+}
+
+/* Render every unanswered incoming-file offer as a row. Only shown when the
+   conversation is active AND the user hasn't answered yet. */
+function renderPendingOffers() {
+  const c = cur(); if (!c) return;
+  const mine = [...pendingOffers.entries()].filter(([, o]) => o.peerId === c.id && !answeredOffers.has(o.offer.offerId));
+  // Remove any request rows that are no longer pending.
+  $$('.fmsg[data-ask]', thread).forEach(el => {
+    if (!mine.some(o => o[0] === el.dataset.ask)) el.remove();
+  });
+  // Add new ones.
+  for (const [offerId, o] of mine) {
+    const off = o.offer;
+    const row = document.createElement('div');
+    row.className = 'msg other fmsg'; row.dataset.ask = offerId; row.dataset.mid = offerId;
+    row.innerHTML = `<div class="bubble fask"><div class="frow">
+      <span class="fic">${esc((off.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4))}</span>
+      <div class="finfo"><b>${esc(off.name)}</b><span>${fmtBytes(off.size)} · wants to send you this</span></div>
+      <div class="fask-acts">
+        <button class="fask-btn ok" data-fask="yes">${ic('check', 13)}<span>Accept</span></button>
+        <button class="fask-btn no" data-fask="no" aria-label="Decline">${ic('x', 13)}</button>
+      </div></div></div>`;
+    thread.appendChild(row);
+  }
+  if (mine.length) requestAnimationFrame(() => scrollBottom(true));
+}
+
+messages.addEventListener('click', e => {
+  const b = e.target.closest('[data-fask]'); if (!b) return;
+  const row = b.closest('.fmsg[data-ask]'); if (!row) return;
+  const offerId = row.dataset.ask;
+  const o = pendingOffers.get(offerId);
+  if (!o) return;
+  $$('.fask-btn', row).forEach(x => x.disabled = true);
+  if (b.dataset.fask === 'yes') {
+    answeredOffers.add(offerId);
+    pendingOffers.delete(offerId);
+    row.remove();
+    acceptFileOffer(o.peerId, o.offer);
+  } else {
+    answeredOffers.add(offerId);
+    pendingOffers.delete(offerId);
+    row.remove();
+    rejectFileOffer(o.peerId, offerId);
+  }
+});
+
+/* ---- file-row upsert / drop --------------------------------------------
+   These (re)draw the file bubble for a fileId that's mid-transfer, so the
+   progress bar and final download button update in place instead of
+   re-inserting a whole row (which would retrigger the enter animation). */
+function upsertFileRow(peerId, rec, patch) {
+  const c = byId(peerId); if (!c) return;
+  const offerId = rec.offerId || rec.offer?.offerId;
+  const fileId = rec.offer?.fileId || offerId;
+  let m = c.messages.find(x => x.file?.fileId === fileId);
+  const status = patch.status;
+  if (!m) {
+    m = { id: 'file-' + fileId, from: rec.dir === 'send' ? 'me' : 'them',
+      t: new Date(rec.offer.at || Date.now()), status: 'delivered',
+      text: '', file: { fileId, name: rec.offer.name, type: rec.offer.type, size: rec.offer.size,
+        at: rec.offer.at, status } };
+    c.messages.push(m);
+    if (peerId === state.active) appendMessage(m);
+  } else {
+    m.file = { ...m.file, ...patch, status };
+    if (patch.blob) m.blob = patch.blob;
+  }
+  // Update the progress bar in the existing row without a full re-render.
+  const rowEl = thread && thread.querySelector(`[data-fprog="${fileId}"]`)?.parentElement;
+  if (rowEl && (status === 'sending' || status === 'receiving')) {
+    const bar = rowEl.querySelector('[data-fprog]');
+    if (bar) bar.style.width = Math.round((patch.progress || 0) * 100) + '%';
+  }
+  if (peerId === state.active) {
+    const msgRow = thread && thread.querySelector(`.fmsg .fprog i[data-fprog="${fileId}"]`)?.closest('.msg');
+    if (msgRow && status === 'received') refreshFileBubble(c, m);
+  }
+  persistMessages(c);
+}
+function dropFileRow(peerId, offerId) {
+  const c = byId(peerId); if (!c) return;
+  const i = c.messages.findIndex(x => x.id === 'file-' + offerId);
+  if (i > -1) {
+    const m = c.messages[i];
+    m.file = { ...m.file, status: 'incomplete' };
+    c.messages[i] = m;
+    if (peerId === state.active) refreshFileBubble(c, m);
+  }
+  pendingOffers.forEach((o, id) => { if (id === offerId) pendingOffers.delete(id); });
+}
+/* Redraw just the one file bubble's body (progress -> final download row). */
+function refreshFileBubble(c, m) {
+  if (c.id !== state.active) return;
+  const row = thread && thread.querySelector(`.msg[data-mid="${m.id}"]`);
+  if (!row) return;
+  const bub = row.querySelector('.bubble');
+  if (bub) bub.outerHTML = bubbleHTML(m);
+}
+async function rehydrateFileBlobs(c) {
+  for (const m of c.messages) {
+    if (!m.file?.fileId || m.blob) continue;
+    try {
+      const blob = await idbGet(m.file.fileId);
+      if (blob) m.blob = blob;
+    } catch { /* blob missing (other device / cleared) — show card only */ }
+  }
+}
+
+/* ---- download button ---------------------------------------------------- */
+messages.addEventListener('click', async e => {
+  const b = e.target.closest('[data-fdl]'); if (!b) return;
+  const c = cur(); if (!c) return;
+  const m = c.messages.find(x => x.file?.fileId === b.dataset.fdl);
+  if (!m?.blob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(m.blob);
+  a.download = m.file.name || 'download';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+
+/* ---- attachment button ------------------------------------------------- */
+const fileInput = $('#fileInput');
+$('#btnAttach').addEventListener('click', () => {
+  const c = cur(); if (!c?.friend) { toast('Start a conversation first'); return; }
+  fileInput.click();
+});
+fileInput.addEventListener('change', () => {
+  const c = cur(); if (!c?.friend) { fileInput.value = ''; return; }
+  // Send each picked file as an offer. If the P2P channel isn't up yet,
+  // ensureP2P establishes it; the offer waits in the room until the peer
+  // joins, and the send loop starts on accept.
+  for (const f of fileInput.files) offerFileToFriend(c, f);
+  fileInput.value = '';
+});
+
+/* ---- Shared-files panel: list file metadata for the active friend ------- */
+async function loadFileMeta(peerId) {
+  const c = byId(peerId); if (!c?.friend) return [];
+  try {
+    const r = await api(`/api/files/meta-list?uuid=${peerId}`);
+    if (!r.ok || !r.data) return [];
+    return r.data.files || [];
+  } catch { return []; }
+}
+
+/*
+
 /*
  * Handle a control message from the peer over the P2P channel. Two shapes:
  *   { kind:'msg', msg }         — a chat message (msg = { id, text, at })
@@ -2058,6 +2571,23 @@ function handlePeerControl(peerId, raw) {
         const c = byId(peerId);
         if (c) setTyping(c, data.on === true);
       }
+      break;
+    case 'file-offer':
+      // Peer wants to send me a file. Shows the "incoming file" request row.
+      handleFileOffer(peerId, data.offer);
+      break;
+    case 'file-accept':
+      // Peer accepted MY pending offer -> start streaming encrypted chunks.
+      handleFileAccept(peerId, data.offerId);
+      break;
+    case 'file-reject':
+      handleFileReject(peerId, data.offerId);
+      break;
+    case 'file-chunk':
+      handleFileChunk(peerId, data);
+      break;
+    case 'file-done':
+      handleFileDone(peerId, data.offerId, data.status);
       break;
     case 'msg':
     default:
