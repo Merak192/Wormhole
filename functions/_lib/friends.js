@@ -50,6 +50,44 @@ export function pair(a, b) {
 export const friendKey = (a, b) => `friend:${pair(a, b).join(':')}`;
 export const pairKey = (a, b) => `pairkey:${pair(a, b).join(':')}`;
 export const histKey = (a, b) => `hist:${pair(a, b).join(':')}`;
+// File attachment METADATA only (name/type/size/fileId/at, no content).
+// Content streams live over P2P; this record is what makes a previously-sent
+// file reappear as a placeholder in the shared-files list on a new device.
+export const filesKey = (a, b) => `files:${pair(a, b).join(':')}`;
+
+/**
+ * Append one file-metadata record to the pair's file list (deduped by fileId,
+ * capped like history). Called by BOTH sides on send/receive so the metadata
+ * survives a device change. Content is NEVER written here.
+ */
+export const FILES_CAP = 100;
+export async function pushFileMeta(kv, a, b, meta) {
+  const key = filesKey(a, b);
+  const arr = (await kv.get(key, 'json')) || [];
+  const i = arr.findIndex(x => x.fileId === meta.fileId);
+  const rec = {
+    fileId: meta.fileId,
+    name: String(meta.name || 'file').slice(0, 200),
+    type: String(meta.type || '').slice(0, 100),
+    size: Number.isFinite(meta.size) ? meta.size : 0,
+    at: meta.at || Date.now(),
+    // 'sending' | 'sent' | 'received' — set by the sender on send, receiver on
+    // completion. Drives the placeholder's icon state in the shared-files list.
+    status: ['sending', 'sent', 'received'].includes(meta.status) ? meta.status : 'sending',
+  };
+  if (i >= 0) arr[i] = { ...arr[i], ...rec }; else arr.push(rec);
+  while (arr.length > FILES_CAP) arr.shift();
+  await kv.put(key, JSON.stringify(arr), { expirationTtl: HISTORY_TTL });
+  return arr;
+}
+
+/** Read the pair's file-metadata list, filtered to records not hidden for me. */
+export async function readFileMeta(kv, meId, peerId) {
+  const arr = (await kv.get(filesKey(meId, peerId), 'json')) || [];
+  // metadata has no per-user hiddenBy (clear conversation doesn't touch it);
+  // return oldest->newest.
+  return arr;
+}
 
 /* ── crypto ────────────────────────────────────────────────────── */
 
