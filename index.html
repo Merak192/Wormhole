@@ -1694,10 +1694,10 @@ let trysteroFailed = false;        // if the CDN load failed, don't retry foreve
    symmetric NAT with no TURN — hole-punching then fails regardless of relay
    quality. See the "P2P" section of the README if you add a TURN server. */
 const RELAY_URLS = [
-  'wss://nostr.nos2.me',
   'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.supernova.ai',
+  'wss://relay.mostr.pub',
+  'wss://relay02.lnfi.network',
+  'wss://relay.bullishbounty.com',
 ];
 
 /* ---- Presence heartbeat + KV delivery fallback (1s loop) ----
@@ -1894,7 +1894,12 @@ async function ensureP2P(peerId) {
     if (!chatAction?.send) return;
     while (outbox.length) {
       const pending = outbox.shift();
-      try { chatAction.send(pending.msg, { target: peerId }).then(
+      // No `target`: Trystero's peer id is a random per-browser value, not
+      // our user id, so targeting the friend's uid would never match. The
+      // room (a:b name + shared password) already bounds membership to this
+      // friend pair, so broadcasting is both safe and necessary — every
+      // device of the friend in this room receives it.
+      try { chatAction.send(pending.msg).then(
         () => {},   // delivery ack no longer means "read" — see p2pDelivered
         () => { /* KV archive still has it */ }
       ); } catch { outbox.unshift(pending); break; }
@@ -1919,7 +1924,9 @@ async function ensureP2P(peerId) {
         setP2pState(peerId, 'closed');
         lastPeerPing = 0;
       }
-      try { pingAction?.send('1', { target: peerId }); } catch { /* channel not up yet */ }
+      // Broadcast (no target): the room bounds membership to this pair; the
+      // peer's Trystero id is random per browser, not their uid.
+      try { pingAction?.send('1'); } catch { /* channel not up yet */ }
     }, 2000);
     flushOutbox();
   };
@@ -1928,29 +1935,24 @@ async function ensureP2P(peerId) {
   const entry = { room, chatAction: () => chatAction, pingAction: () => pingAction, outbox };
   p2p.set(peerId, entry);
 
-  room.onPeerJoin = (id) => {
-    // id === peerId: that user's browser joined (or re-joined) the room.
-    // Trystero routes per-peer messages on the peer's own topic, so a message
-    // from the peer's OTHER device would target that device's id, not ours —
-    // the channel only carries this user's own traffic.
-    if (id === peerId) {
-      console.log(`[wh p2p] ${peerId}: peer handshake complete -> waiting for pings to flip OPEN`);
-      setP2pState(peerId, 'connect');     // peer just joined; online only once
-                                           // their pings start arriving
-      lastPeerPing = Date.now();
-      bindChannels();
-    } else {
-      console.log(`[wh p2p] ${peerId}: unexpected peer ${id} in room (second device?)`);
-    }
+  room.onPeerJoin = () => {
+    // Trystero's peer id is a random 20-char value generated in the peer's
+    // browser at load time — it is NOT our user id. The room name
+    // (a:b canonical pair + shared password) already restricts membership
+    // to this friend pair, so *any* peer joining this room is that friend
+    // (or their second device). We treat any onPeerJoin as "the peer is
+    // here" and let the 2s ping loop settle which of their devices is
+    // live; presence only flips "open" when their pings actually arrive.
+    console.log(`[wh p2p] ${peerId}: peer joined room -> CONNECTING`);
+    setP2pState(peerId, 'connect');     // peer just joined; online only once
+                                         // their pings start arriving
+    lastPeerPing = Date.now();
+    bindChannels();
   };
-  room.onPeerLeave = (id) => {
-    if (id === peerId) {
-      console.log(`[wh p2p] ${peerId}: peer left room`);
-      setP2pState(peerId, 'closed');
-      lastPeerPing = 0;
-    } else {
-      console.log(`[wh p2p] ${peerId}: unexpected peer ${id} left room`);
-    }
+  room.onPeerLeave = () => {
+    console.log(`[wh p2p] ${peerId}: peer left room`);
+    setP2pState(peerId, 'closed');
+    lastPeerPing = 0;
   };
   // NB: `room.onClose` does not exist in Trystero 0.26.0 (it's a pre-0.26
   // API). The room only tears down explicitly via `room.leave()`, which we
@@ -2029,7 +2031,9 @@ function sendReadReceipt(peerId, kind, ids) {
   const entry = p2p.get(peerId);
   if (byId(peerId)?.p2pState === 'open' && entry?.chatAction?.()?.send) {
     console.log(`[wh tick] P2P send ${kind} -> ${peerId} [${ids.join(', ')}]`);
-    entry.chatAction().send({ kind, ids }, { target: peerId }).catch(() => {});
+    // Broadcast within the room (membership is already bounded to this pair
+    // by the room name + shared password); see p2pSend for the target note.
+    entry.chatAction().send({ kind, ids }).catch(() => {});
   } else {
     console.log(`[wh tick] P2P ${kind} NOT sent (channel not open) -> ${peerId} [${ids.join(', ')}]`);
   }
@@ -2059,20 +2063,24 @@ function sendAck(peerId, kind, ids) {
 function sendTyping(peerId, on) {
   const entry = p2p.get(peerId);
   if (byId(peerId)?.p2pState === 'open' && entry?.chatAction?.()?.send) {
-    entry.chatAction().send({ kind: 'typing', on }, { target: peerId }).catch(() => {});
+    entry.chatAction().send({ kind: 'typing', on }).catch(() => {});
   }
 }
 
 function p2pSend(peerId, msg) {
   // Real-time chat. The wire payload is a flat { id, text, at } object (NOT the
   // full message — no Date, no nested fields), wrapped as { kind:'msg', msg }.
+  // Broadcast within the room (no target): Trystero's peer id is a random
+  // per-browser value, not our user id, so targeting by uid would silently
+  // no-op ("no peer with id ... found"). The room name + password already
+  // restricts the room to this friend pair.
   // If the channel is up, send now; otherwise queue it — it's flushed the
   // moment the peer's channel opens, so a message sent before the peer was
   // online still reaches them.
   const entry = p2p.get(peerId);
   const wire = { kind: 'msg', msg: { id: msg.id, text: msg.text, at: msg.t.getTime() } };
   if (entry?.chatAction()?.send) {
-    entry.chatAction().send(wire, { target: peerId }).catch(() => {});
+    entry.chatAction().send(wire).catch(() => {});
     return;
   }
   if (entry?.outbox) {
