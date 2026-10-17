@@ -454,38 +454,51 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .attach:active { transform: scale(0.94); transition-duration: 70ms; }
 .attach svg { width: 20px; height: 20px; }
 
-/* ---- File attachment bubbles ------------------------------------------ */
-.fmsg { display: inline-flex; flex-direction: column; gap: 4px; max-width: 280px; }
+/* ---- File attachment bubbles ------------------------------------------
+   Structure: .fmsg (bubble) > .fbody (column) > [preview] + [icon+info row]
+   + [progress | download | incomplete]. Each element gets its own row so
+   name / size / status never crowd together. */
+.fmsg { display: block; max-width: 280px; min-width: 200px; }
+.fbody { display: flex; flex-direction: column; gap: 8px; }
 .fmsg .thumb {
-  width: 100%; max-width: 240px; max-height: 240px; object-fit: cover; border-radius: 10px 10px 4px 10px;
-  background: var(--sunken); display: block;
+  width: 100%; max-width: 240px; max-height: 240px; object-fit: cover;
+  border-radius: 10px 10px 4px 10px; background: var(--sunken); display: block;
 }
 .msg.self .fmsg .thumb { border-radius: 10px 4px 10px 10px; }
-.fmsg video { width: 100%; max-width: 240px; border-radius: 10px 10px 4px 10px; background: #000; }
-.msg.self .fmsg video { border-radius: 10px 4px 10px 10px; }
-.fmsg audio { width: 240px; }
-.frow { display: flex; align-items: center; gap: 8px; }
-.fic {
-  width: 38px; height: 38px; flex: none; border-radius: 9px; display: grid; place-items: center;
+.fmsg video.thumb { width: 100%; max-width: 240px; border-radius: 10px 10px 4px 10px; background: #000; }
+.msg.self .fmsg video.thumb { border-radius: 10px 4px 10px 10px; }
+.fmsg audio { width: 220px; }
+/* name + size + icon row (plain-file / non-preview files) */
+.fbody .fic {
+  width: 40px; height: 40px; flex: none; border-radius: 10px; display: grid; place-items: center;
   background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
 }
-.finfo { min-width: 0; }
-.finfo b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.finfo { min-width: 0; flex: 1; }
+.finfo b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .finfo span { font-size: 12px; color: var(--meta); }
 .self .finfo span { color: var(--meta-self); }
-/* progress bar inside the file bubble */
-.fprog { width: 100%; max-width: 200px; height: 4px; border-radius: 4px; background: var(--line-strong); overflow: hidden; margin-top: 2px; }
-.fprog i { display: block; height: 100%; width: 0%; background: var(--accent); transition: width 120ms var(--ease); border-radius: inherit; }
-/* download affordance for received files whose blob is present */
-.fdl { align-self: flex-start; font-size: 12px; font-weight: 500; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
-.fmeta-row { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 4px; }
-/* pending "incoming file" request row (receiver has not answered yet) */
+/* row that pairs icon + info side by side */
+.fmsg .fic + .finfo { display: inline-flex; }
+/* progress bar + percent */
+.fprog { position: relative; width: 100%; height: 4px; border-radius: 4px; background: var(--line-strong); overflow: hidden; }
+.fprog i { position: absolute; inset: 0 auto 0 0; height: 100%; background: var(--accent); transition: width 120ms var(--ease); border-radius: inherit; }
+.fpct { display: block; margin-top: 5px; font-size: 11px; color: var(--meta); font-variant-numeric: tabular-nums; }
+.self .fpct { color: var(--meta-self); }
+/* download affordance */
+.fdl {
+  align-self: flex-start; font-size: 12px; font-weight: 500; color: var(--accent);
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.fdl:hover { filter: brightness(0.96); }
+/* broken transfer */
+.fincomplete { font-size: 12px; color: var(--text-3); font-style: italic; }
+/* pending "incoming file" request row (receiver hasn't answered yet) */
 .fask { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; }
-.fask-row { display: flex; align-items: center; gap: 8px; }
-.fask-acts { display: flex; gap: 5px; margin-left: auto; }
+.fask-top { display: flex; align-items: center; gap: 8px; }
+.fask-acts { display: flex; gap: 6px; margin-top: 2px; }
 .fask-btn {
-  height: 26px; min-width: 26px; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 500;
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  height: 28px; min-width: 28px; padding: 0 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-2);
   transition: transform 320ms var(--spring), background var(--t-fast) var(--ease);
 }
@@ -1303,6 +1316,7 @@ const fmtBytes = n => {
    'incomplete' -> broken (transfer aborted mid-flight). */
 function fileBubbleHTML(m, meta) {
   const f = m.file, kind = classifyFile(f.type, f.name);
+  // Inline preview (image / video / audio) — only when the Blob is present.
   let body = '';
   if (m.blob) {
     if (kind === 'image') body = `<img class="thumb" loading="lazy" alt="${esc(f.name)}" src="${m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob))}">`;
@@ -1310,13 +1324,28 @@ function fileBubbleHTML(m, meta) {
     else if (kind === 'audio') body = `<audio controls src="${m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob))}"></audio>`;
   }
   const ext = (f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4);
-  const dl = m.blob ? `<button class="fdl" data-fdl="${f.fileId}" data-name="${esc(f.name)}">${ic('down', 14)}<span>Download</span></button>` : '';
-  const prog = (f.status === 'sending' || f.status === 'receiving')
-    ? `<div class="fprog"><i data-fprog="${f.fileId}" style="width:${Math.round((f.progress || 0) * 100)}%"></i></div>` : '';
-  const incomplete = f.status === 'incomplete' ? '<span class="finfo"><span>Incomplete transfer</span></span>' : '';
-  return `<div class="bubble fmsg"><div class="frow">${body || `<span class="fic">${ext}</span>`}
-    <div class="finfo"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)}${kind === 'file' ? ' · ' + ext : ''}</span></div></div>
-    ${incomplete || dl || prog ? `<div class="fmeta-row">${incomplete}${dl}${prog}</div>` : ''}${meta}</div>`;
+  const status = f.status;
+  const live = status === 'sending' || status === 'receiving';
+  // Name + size row: icon (or a compact kind tag when there's a preview), name,
+  // size. Each on its own line so nothing crowds.
+  const icon = body ? '' : `<span class="fic">${ext}</span>`;
+  const label = icon ? `<div class="finfo"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)} · ${ext}</span></div>` : '';
+  // Live transfer -> progress bar; complete -> download (when blob present);
+  // aborted -> a quiet "incomplete" note.
+  let action = '';
+  if (live) {
+    const pct = Math.round((f.progress || 0) * 100);
+    action = `<div class="fprog"><i data-fprog="${f.fileId}" style="width:${pct}%"></i><span class="fpct">${pct}%</span></div>`;
+  } else if (status === 'incomplete') {
+    action = `<span class="fincomplete">Transfer incomplete</span>`;
+  } else if (m.blob) {
+    action = `<button class="fdl" data-fdl="${f.fileId}" data-name="${esc(f.name)}">${ic('down', 14)}<span>Download</span></button>`;
+  }
+  // Assemble: preview (if any) sits full-width on top; the info row + action
+  // sit below it. For a plain file (no blob yet) the icon + info + action
+  // stack in the same left-aligned column.
+  return `<div class="bubble fmsg ${kind}">${body ? '' : ''}
+    <div class="fbody">${body}${icon}${label}${action}</div>${meta}</div>`;
 }
 function actionsHTML(m) {
   if (m.recalled) return '';
@@ -2234,16 +2263,40 @@ async function idbGet(fileId) {
 /* ---- per-file AES-GCM streaming crypto --------------------------------- */
 const CHUNK = 128 * 1024;          // 128KB plaintext per frame
 const fileXfer = new Map();        // offerId -> { peerId, dir:'send'|'recv', ... }
-const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
-const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+/* base64url encode/decode that handles large buffers. The naive
+   `String.fromCharCode(...arr)` / `Uint8Array.from(str, mapper)` forms blow
+   the V8 argument limit (or stack) at ~64KB+, and our chunks are 128KB, so
+   both are chunked. */
+const b64enc = buf => {
+  const u8 = new Uint8Array(buf); let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const b64dec = s => {
+  const bin = atob(String(s).replace(/-/g, '+').replace(/_/g, '/'));
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+};
 
-async function deriveFileKey(pairKeyB64, salt) {
-  // Expand the pair key + a per-file random salt into a fresh 32-byte AES key
-  // so one compromised/dropped file doesn't cross into the others.
-  const base = await crypto.subtle.importKey('raw', fromB64(pairKeyB64), { name: 'AES-GCM' }, false, ['encrypt']);
-  const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: new TextEncoder().encode(salt), iterations: 1000 },
-    base, 'AES-GCM', false, ['encrypt', 'decrypt']);
+/* Per-peer AES-GCM key cache, derived from the PAIR key (shared by both
+   sides of the friendship). AES-GCM needs a unique (key, nonce) pair per
+   encrypted message; we give each 128KB chunk a fresh random 12-byte nonce
+   (prepended to that chunk's ciphertext), so even reusing one key across
+   many chunks is safe. No PBKDF2: the pair key is already a 256-bit AES
+   key, and adding a KDF only multiplied the ways the two sides could end
+   up with different bases (the original bug). */
+const fileKeyCache = new Map();    // peerId -> CryptoKey
+async function fileKeyFor(peerId) {
+  let key = fileKeyCache.get(peerId);
+  if (key) return key;
+  // Make sure the shared pair key is loaded before importing it.
+  if (!keys.get(peerId)) await refreshFriendHistory(peerId);
+  const pair = keys.get(peerId);
+  if (!pair) throw new Error('pair key not available yet');
+  key = await crypto.subtle.importKey('raw', b64dec(pair),
+    { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  fileKeyCache.set(peerId, key);
   return key;
 }
 
@@ -2258,9 +2311,8 @@ function p2pControl(peerId, obj) {
 /* ---- SENDER: start an offer when the user picks a file ------------------ */
 function offerFileToFriend(c, file) {
   const offerId = wireId();
-  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
   const offer = {
-    offerId, salt,
+    offerId,
     fileId: offerId,
     name: file.name, type: file.type || 'application/octet-stream',
     size: file.size, at: Date.now(),
@@ -2268,6 +2320,10 @@ function offerFileToFriend(c, file) {
   // Persist metadata now (status 'sending') so it survives a refresh mid-send.
   void api('/api/files/meta', { uuid: c.friendId, ...offer, status: 'sending' });
   fileXfer.set(offerId, { peerId: c.friendId, dir: 'send', offer, file, started: false, aborted: false });
+  // Show the file bubble in MY chat immediately (issue: it used to only appear
+  // in the right-panel file list). Status 'sending' + 0 progress; it advances
+  // as chunks stream and flips to 'sent' when the receiver confirms.
+  upsertFileRow(c.friendId, fileXfer.get(offerId), { status: 'sending', progress: 0 });
   p2pControl(c.friendId, { kind: 'file-offer', offer });
 }
 
@@ -2279,8 +2335,8 @@ function acceptFileOffer(peerId, offer) {
   };
   fileXfer.set(offer.offerId, rec);
   p2pControl(peerId, { kind: 'file-accept', offerId: offer.offerId });
-  // Seed the "incoming file" bubble row so progress has somewhere to render.
-  upsertFileRow(peerId, rec, { status: 'incoming' });
+  // Seed the "receiving" bubble so progress has somewhere to render.
+  upsertFileRow(peerId, rec, { status: 'receiving', progress: 0 });
 }
 
 function rejectFileOffer(peerId, offerId) {
@@ -2296,13 +2352,9 @@ async function handleFileAccept(peerId, offerId) {
   if (!rec || rec.dir !== 'send' || rec.started || rec.aborted) return;
   rec.started = true;
   const { offer, file } = rec;
-  const key = await deriveFileKey(keys.get(peerId) || offer.salt, offer.salt);
-  // NOTE: the receiver derives with keys.get() == the pair key; we MUST use
-  // the same base. If the pair key isn't loaded yet, block on it.
-  if (!keys.get(peerId)) {
-    await refreshFriendHistory(peerId);   // populates keys.<peer> from KV
-    if (!keys.get(peerId)) return;
-  }
+  let key;
+  try { key = await fileKeyFor(peerId); }
+  catch (e) { console.warn('[wh file] sender: pair key not ready, cannot start:', e.message); return; }
   const total = Math.max(1, Math.ceil(file.size / CHUNK));
   let i = 0;
   for (; i < total; i++) {
@@ -2314,13 +2366,15 @@ async function handleFileAccept(peerId, offerId) {
     const frame = new Uint8Array(12 + ct.length);
     frame.set(nonce, 0); frame.set(ct, 12);
     await sendChunk(peerId, { kind: 'file-chunk', offerId, i, total, last: i + 1 === total,
-      data: b64(frame) });
-    if (i === 0 || (i + 1) % 10 === 0 || i + 1 === total) {
+      data: b64enc(frame) });
+    if (i === 0 || (i + 1) % 5 === 0 || i + 1 === total) {
       upsertFileRow(peerId, rec, { status: 'sending', progress: (i + 1) / total });
     }
     await new Promise(r => setTimeout(r, 0));   // yield; keep UI + pings live
   }
   if (rec.aborted) return;
+  // Persist the finished content locally so I can re-view/download it later.
+  await idbPut(offer.fileId, file);
   p2pControl(peerId, { kind: 'file-done', offerId, status: 'sent' });
   upsertFileRow(peerId, rec, { status: 'sent', progress: 1 });
   void api('/api/files/meta', { uuid: peerId, ...offer, status: 'sent' });
@@ -2339,9 +2393,10 @@ async function handleFileChunk(peerId, data) {
   const rec = fileXfer.get(data.offerId);
   if (!rec || rec.dir !== 'recv' || rec.aborted) return;
   if (data.last) rec.totalChunks = data.total;
-  const raw = fromB64(data.data);
-  const key = await deriveFileKey(keys.get(peerId) || rec.offer.salt, rec.offer.salt);
-  if (!keys.get(peerId)) { await refreshFriendHistory(peerId); if (!keys.get(peerId)) return; }
+  let key;
+  try { key = await fileKeyFor(peerId); }
+  catch (e) { console.warn('[wh file] receiver: pair key not ready:', e.message); return; }
+  const raw = b64dec(data.data);
   try {
     const pt = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: raw.subarray(0, 12) }, key, raw.subarray(12));
@@ -2408,13 +2463,15 @@ function renderPendingOffers() {
     const off = o.offer;
     const row = document.createElement('div');
     row.className = 'msg other fmsg'; row.dataset.ask = offerId; row.dataset.mid = offerId;
-    row.innerHTML = `<div class="bubble fask"><div class="frow">
-      <span class="fic">${esc((off.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4))}</span>
-      <div class="finfo"><b>${esc(off.name)}</b><span>${fmtBytes(off.size)} · wants to send you this</span></div>
+    row.innerHTML = `<div class="bubble fask">
+      <div class="fask-top">
+        <span class="fic">${esc((off.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4))}</span>
+        <div class="finfo"><b>${esc(off.name)}</b><span>${fmtBytes(off.size)} · wants to send you this</span></div>
+      </div>
       <div class="fask-acts">
         <button class="fask-btn ok" data-fask="yes">${ic('check', 13)}<span>Accept</span></button>
         <button class="fask-btn no" data-fask="no" aria-label="Decline">${ic('x', 13)}</button>
-      </div></div></div>`;
+      </div></div>`;
     thread.appendChild(row);
   }
   if (mine.length) requestAnimationFrame(() => scrollBottom(true));
@@ -2461,15 +2518,18 @@ function upsertFileRow(peerId, rec, patch) {
     m.file = { ...m.file, ...patch, status };
     if (patch.blob) m.blob = patch.blob;
   }
-  // Update the progress bar in the existing row without a full re-render.
-  const rowEl = thread && thread.querySelector(`[data-fprog="${fileId}"]`)?.parentElement;
-  if (rowEl && (status === 'sending' || status === 'receiving')) {
-    const bar = rowEl.querySelector('[data-fprog]');
-    if (bar) bar.style.width = Math.round((patch.progress || 0) * 100) + '%';
+  // Update the progress bar + % label in the existing row without a full
+  // re-render.
+  if (status === 'sending' || status === 'receiving') {
+    const bar = thread && thread.querySelector(`[data-fprog="${fileId}"]`);
+    if (bar) {
+      bar.style.width = Math.round((patch.progress || 0) * 100) + '%';
+      const pct = bar.parentElement?.querySelector('.fpct');
+      if (pct) pct.textContent = Math.round((patch.progress || 0) * 100) + '%';
+    }
   }
   if (peerId === state.active) {
-    const msgRow = thread && thread.querySelector(`.fmsg .fprog i[data-fprog="${fileId}"]`)?.closest('.msg');
-    if (msgRow && status === 'received') refreshFileBubble(c, m);
+    if (status === 'received') refreshFileBubble(c, m);
   }
   persistMessages(c);
 }
