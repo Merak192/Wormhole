@@ -1567,7 +1567,13 @@ function openConversation(id, { initial = false } = {}) {
     // render inline again on this device. Fire-and-forget; re-render when it
     // lands so the bubbles pick up their blobs.
     rehydrateFileBlobs(c).then(() => {
-      if (c.id === state.active) { c.messages.forEach(m => { if (m.file) m.file.status = m.file.status || 'received'; }); renderMessages(); }
+      // Any file that came back from IndexedDB now has its blob; re-render so
+      // the thumbnail shows. Don't clobber an in-flight status (the live
+      // transfer still owns 'sending'/'receiving'/'incomplete').
+      if (c.id === state.active) {
+        c.messages.forEach(m => { if (m.file && m.blob && !['sending','receiving','incomplete'].includes(m.file.status)) m.file.status = m.file.status || 'received'; });
+        renderMessages();
+      }
     });
     // Start (or re-use) the P2P channel to this friend so messages land in
     // real time. Non-blocking: if Trystero is still loading the CDN or the
@@ -2403,31 +2409,58 @@ async function handleFileChunk(peerId, data) {
     rec.chunks.set(data.i, new Uint8Array(pt));
     rec.received = rec.chunks.size;
     const total = rec.totalChunks || (rec.expected ? Math.ceil(rec.expected / CHUNK) : 0);
-    if (total) upsertFileRow(peerId, rec, { status: 'receiving', progress: rec.received / total });
-    // If every chunk has arrived, the sender's file-done will fire; but be
-    // resilient: if we already hold total chunks, finish now.
-    if (total && rec.received >= total) await finishFileReceive(rec);
+    // Update the progress bar. Only finish once we KNOW the total AND hold
+    // every chunk — finishing early (before `total` is set, or with a gap)
+    // produced a partial/empty blob that then rendered as "received" with no
+    // usable thumbnail. `last` guarantees `total` is set before we can win.
+    if (total && rec.received >= total) {
+      upsertFileRow(peerId, rec, { status: 'receiving', progress: rec.received / total });
+      await finishFileReceive(rec);
+    } else if (total) {
+      upsertFileRow(peerId, rec, { status: 'receiving', progress: rec.received / total });
+    }
   } catch (e) {
     // A corrupt/resent chunk: drop it and let the sender resend by index.
+    console.warn('[wh file] chunk dropped (auth/decode)', data.i, e.message);
     rec.chunks.delete(data.i);
   }
 }
 
 async function finishFileReceive(rec) {
   if (rec.done) return; rec.done = true;
-  const ordered = [...rec.chunks.entries()].sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  const total = rec.totalChunks || Math.ceil((rec.expected || 1) / CHUNK);
+  // Reassemble in index order; a missing index means a lost chunk -> mark
+  // incomplete rather than claiming success with a truncated file.
+  const ordered = [];
+  let bytes = 0, missing = false;
+  for (let i = 0; i < total; i++) {
+    const c = rec.chunks.get(i);
+    if (!c) { missing = true; break; }
+    ordered.push(c); bytes += c.length;
+  }
+  const complete = !missing && (rec.expected ? bytes === rec.expected : true);
   const blob = new Blob(ordered, { type: rec.offer.type });
+  if (!complete) {
+    console.warn(`[wh file] transfer incomplete (${bytes}/${rec.expected} bytes); marking incomplete`);
+    upsertFileRow(rec.peerId, rec, { status: 'incomplete' });
+    return;
+  }
   await idbPut(rec.offer.fileId, blob);
+  // Store the blob on the in-memory message AND pass it to upsertFileRow so the
+  // bubble can paint the thumbnail/download affordance immediately.
   upsertFileRow(rec.peerId, rec, { status: 'received', progress: 1, blob });
   void api('/api/files/meta', { uuid: rec.peerId, fileId: rec.offer.fileId, name: rec.offer.name,
     type: rec.offer.type, size: rec.offer.size, at: rec.offer.at, status: 'received' });
 }
 
-function handleFileDone(peerId, offerId, status) {
+async function handleFileDone(peerId, offerId, status) {
   const rec = fileXfer.get(offerId);
   if (!rec || rec.dir !== 'recv') return;
-  if (rec.expected && rec.received >= rec.totalChunks) { /* already finished */ }
-  else upsertFileRow(peerId, rec, { status: status === 'received' ? 'received' : 'incomplete' });
+  // The sender finished; re-evaluate from the chunks we actually hold (not the
+  // running counter, which can lag on out-of-order delivery).
+  const total = rec.totalChunks || Math.ceil((rec.expected || 1) / CHUNK);
+  if (!rec.done && rec.received >= total) await finishFileReceive(rec);
+  else if (!rec.done) upsertFileRow(peerId, rec, { status: 'incomplete' });
 }
 
 function handleFileReject(peerId, offerId) {
@@ -2528,9 +2561,12 @@ function upsertFileRow(peerId, rec, patch) {
       if (pct) pct.textContent = Math.round((patch.progress || 0) * 100) + '%';
     }
   }
-  if (peerId === state.active) {
-    if (status === 'received') refreshFileBubble(c, m);
-  }
+  // When a transfer COMPLETES (received/sent) the bubble body changes from a
+  // progress bar to a thumbnail + download button. Re-render the row so the
+  // new markup appears. `refreshFileBubble` itself guards on the conversation
+  // being the active one (and returns early when it isn't), so this is safe to
+  // call unconditionally here.
+  if (status === 'received' || status === 'sent') refreshFileBubble(c, m);
   persistMessages(c);
 }
 function dropFileRow(peerId, offerId) {
