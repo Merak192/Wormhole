@@ -365,6 +365,15 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .msg:hover .msg-actions, .msg.tap .msg-actions, .msg:focus-within .msg-actions { opacity: 1; transform: none; pointer-events: auto; }
 .msg-actions button { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); }
 .msg-actions button:hover { color: var(--text); }
+/* Copy button: on click the copy icon swaps to a check that pops in (scale +
+   accent tint), then reverts after ~900ms. Re-triggered by toggling .copied. */
+.msg-actions button.copied { color: var(--accent); }
+.msg-actions button.copied svg { animation: checkPop 320ms var(--spring) both; }
+@keyframes checkPop {
+  0%   { transform: scale(0.4); opacity: 0.3; }
+  60%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
 
 /* Typing indicator: three dots, offset delays -> soft wave */
 .dots { display: flex; gap: 4px; align-items: center; height: 18px; padding: 0 2px; }
@@ -1488,7 +1497,7 @@ messages.addEventListener('click', e => {
   if (act && row) {
     const m = cur()?.messages.find(x => x.id === row.dataset.mid);
     if (!m) return;
-    if (act.dataset.act === 'copy') copyText(m.text); else recall(m, row);
+    if (act.dataset.act === 'copy') copyText(m.text, act); else recall(m, row);
     row.classList.remove('tap'); return;
   }
   if (e.target.closest('.bubble') && row) {       // touch: tap a bubble to reveal its actions
@@ -1496,13 +1505,27 @@ messages.addEventListener('click', e => {
     row.classList.toggle('tap');
   }
 });
-function copyText(t) {
-  const done = () => toast('Copied');
+function copyText(t, btn) {
+  const done = () => { toast('Copied'); morphCopyBtn(btn); };
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
   function fallback() {
     const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
     document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); done();
   }
+}
+/* After a copy, the button's icon swaps to a check that pops in, then reverts
+   to the copy icon after ~900ms. `btn` is the [data-act="copy"] button. */
+let copyBtnRevert = null;
+function morphCopyBtn(btn) {
+  if (!btn) return;
+  clearTimeout(copyBtnRevert);
+  const svg = $('svg', btn); if (!svg) return;
+  svg.innerHTML = ICONS.check;                    // swap copy -> check (same size attrs)
+  btn.classList.remove('copied'); void btn.offsetWidth; btn.classList.add('copied');
+  copyBtnRevert = setTimeout(() => {
+    btn.classList.remove('copied');
+    svg.innerHTML = ICONS.copy;                   // check -> copy
+  }, 900);
 }
 /* Recall: bubble fades/scales out (200ms), swaps to a quiet placeholder, fades back in */
 function recall(m, row) {
