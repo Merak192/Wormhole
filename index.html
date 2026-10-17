@@ -163,6 +163,10 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .icon-btn:active { transform: scale(0.94); transition-duration: 80ms; }
 .icon-btn[aria-pressed="true"] { color: var(--accent); }
 .icon-btn[aria-pressed="true"]::before { opacity: 1; background: var(--accent-soft); }
+/* Theme toggle: same borderless, fill-less footprint as every other icon
+   button. The two stacked sun/moon icons would otherwise read as a visible
+   block, so drop the hover tint — it behaves exactly like #btnLogout etc. */
+.theme-btn::before { display: none; }
 
 /* ==========================================================================
    3. AVATAR + PRESENCE
@@ -204,6 +208,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 
 .sb-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 14px 12px 20px; }
 .sb-head h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+.sb-head-actions { display: flex; align-items: center; gap: 2px; }
 .btn-sb-collapse { display: none; }
 
 .sb-search {
@@ -694,7 +699,10 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   <aside class="sidebar" id="sidebar" aria-label="Conversations">
     <header class="sb-head">
       <h1>Messages</h1>
-      <button class="icon-btn hv btn-sb-collapse" id="btnSbCollapse" aria-label="Collapse sidebar" data-ic="panelLeft"></button>
+      <div class="sb-head-actions">
+        <button class="icon-btn hv btn-add" id="btnAdd" aria-label="Add friend" title="Add friend" data-ic="plus"></button>
+        <button class="icon-btn hv btn-sb-collapse" id="btnSbCollapse" aria-label="Collapse sidebar" data-ic="panelLeft"></button>
+      </div>
     </header>
     <label class="sb-search">
       <span data-ic="search" data-size="16"></span>
@@ -714,7 +722,6 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
     <footer class="sb-foot">
       <span class="av" id="meAv" style="--s:34px;--h:200"><span></span></span>
       <div class="me"><b id="meName"></b><span id="meId"></span></div>
-      <button class="icon-btn hv btn-add" id="btnAdd" aria-label="Add friend" title="Add friend" data-ic="plus"></button>
       <button class="icon-btn hv theme-btn" id="btnTheme" aria-label="Toggle dark mode" aria-pressed="false">
         <span class="ic sun" data-ic="sun"></span><span class="ic moon" data-ic="moon"></span>
       </button>
