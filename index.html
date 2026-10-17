@@ -1236,6 +1236,11 @@ function appendMessage(m, { delay = 0 } = {}) {
      a gentle scale/fade-in (.morph) rather than the full enter-slide. */
   const typingRow = $('.typing-row', thread);
   if (typingRow && m.from === 'them') {
+    // setTyping(c,false) above may have scheduled a 200ms fade-out of this
+    // very row (hideTypingRow's non-immediate path). We're about to reuse the
+    // node as the message bubble, so cancel that pending removal or it would
+    // delete the bubble 200ms after it appears (the "flash then disappear").
+    clearTimeout(typingHideTimer);
     typingRow.classList.remove('typing-row', 'enter', 'leaving');
     typingRow.className = `msg other morph`;
     typingRow.dataset.mid = m.id; typingRow.dataset.from = m.from; typingRow.dataset.t = m.t.getTime();
@@ -1295,7 +1300,13 @@ function armReadObserver() {
 }
 
 /* Typing indicator row */
+// Pending 200ms fade-out of the typing row. Kept so the morph path in
+// appendMessage (and a re-show of typing) can CANCEL it: the row node gets
+// reused as a message bubble, so a stale el.remove() timer would delete the
+// very bubble that just appeared (the "flash then disappear" bug).
+let typingHideTimer = null;
 function showTypingRow() {
+  clearTimeout(typingHideTimer);   // typing is showing again — cancel any fade-out
   if (!thread || $('.typing-row', thread)) return;
   const near = nearBottom();
   const el = document.createElement('div'); el.className = 'msg other enter typing-row';
@@ -1304,8 +1315,10 @@ function showTypingRow() {
 }
 function hideTypingRow(immediate) {
   const el = thread && $('.typing-row', thread); if (!el) return;
+  clearTimeout(typingHideTimer);
   if (immediate || reduce()) { el.remove(); return; }
-  el.classList.add('leaving'); setTimeout(() => el.remove(), 200);
+  el.classList.add('leaving');
+  typingHideTimer = setTimeout(() => { el.remove(); typingHideTimer = null; }, 200);
 }
 function setTyping(c, on) {
   c.typing = on;
