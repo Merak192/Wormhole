@@ -2379,10 +2379,13 @@ async function handleFileAccept(peerId, offerId) {
     await new Promise(r => setTimeout(r, 0));   // yield; keep UI + pings live
   }
   if (rec.aborted) return;
-  // Persist the finished content locally so I can re-view/download it later.
+  // Persist the finished content locally so I can re-view/download it later,
+  // AND hand the File (a Blob) to the message so MY bubble shows the same
+  // inline preview + Download button as the receiver's (the sender used to
+  // mark 'sent' without a blob, so its own bubble was a bare file card).
   await idbPut(offer.fileId, file);
   p2pControl(peerId, { kind: 'file-done', offerId, status: 'sent' });
-  upsertFileRow(peerId, rec, { status: 'sent', progress: 1 });
+  upsertFileRow(peerId, rec, { status: 'sent', progress: 1, blob: file });
   void api('/api/files/meta', { uuid: peerId, ...offer, status: 'sent' });
 }
 
