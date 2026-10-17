@@ -369,6 +369,12 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 @keyframes wave { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
 .typing-row .bubble { padding: 9px 12px; }
 
+/* When a message lands while the typing row is showing, the dots are replaced
+   in-place by the bubble (same DOM node, no removal + re-insert), so the row
+   morphs: a tiny scale + fade-in on the bubble instead of a jump. */
+.msg.morph .bubble { animation: morphIn 220ms var(--ease) both; }
+@keyframes morphIn { from { opacity: 0.6; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+
 /* Skeleton shimmer (transform-only sweep) */
 .sk { position: relative; overflow: hidden; background: var(--sk); border-radius: 8px; }
 .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--sk-hi), transparent); transform: translateX(-100%); animation: shimmer 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
@@ -1220,16 +1226,35 @@ function appendMessage(m, { delay = 0 } = {}) {
   $('.empty', thread)?.remove();
   const prev = $$('.msg[data-mid]', thread).pop();
   if (!prev || !sameDay(new Date(+prev.dataset.t), m.t)) thread.insertBefore(dayEl(m.t), $('.typing-row', thread));
-  const el = msgEl(m, { enter: true, delay });
-  thread.insertBefore(el, $('.typing-row', thread));
+
+  /* If the typing row is showing (peer was typing), morph it in place into
+     this message instead of inserting a new row and removing the typing row
+     on separate frames. That's what caused the visible flicker: the typing
+     bubble disappeared, then the message bubble slid up into its space,
+     two different DOM nodes swapped. Now the same DOM node just changes
+     content — the row never leaves the layout, and the bubble itself gets
+     a gentle scale/fade-in (.morph) rather than the full enter-slide. */
+  const typingRow = $('.typing-row', thread);
+  if (typingRow && m.from === 'them') {
+    typingRow.classList.remove('typing-row', 'enter', 'leaving');
+    typingRow.className = `msg other morph`;
+    typingRow.dataset.mid = m.id; typingRow.dataset.from = m.from; typingRow.dataset.t = m.t.getTime();
+    typingRow.innerHTML = bubbleHTML(m) + actionsHTML(m);
+    /* Drop the now-stale dots / any "leaving" class so the next typing
+       burst can start from a clean row. */
+  } else {
+    const el = msgEl(m, { enter: true, delay });
+    thread.insertBefore(el, typingRow);
+  }
   markGroups();
   // Watch the new row so it earns a read receipt the moment it scrolls into
   // view (delivered-only if the user is scrolled up or the chat isn't active).
-  readIO?.observe(el);
+  const newEl = typingRow && m.from === 'them' ? typingRow : $$('.msg[data-mid]', thread).pop();
+  readIO?.observe(newEl);
   // A message just filled a previously-empty conversation: if the peer is
   // still typing, the three-dot row can now live on the real thread, so show
   // it (it was suppressed while the pane was on the "No messages" placeholder).
-  if (cur()?.typing) showTypingRow();
+  if (cur()?.typing && !$('.typing-row', thread)) showTypingRow();
 }
 /* Drop the .enter class once finished so no will-change lingers */
 messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
