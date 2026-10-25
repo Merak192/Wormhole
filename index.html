@@ -355,6 +355,10 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 /* Recalled state */
 .bubble.recalled { background: transparent !important; color: var(--text-3) !important; border: 1px dashed var(--line-strong); font-size: 13px; font-style: italic; }
 .bubble.recalling { opacity: 0; transform: scale(0.96); }
+.bubble.recalled { display: inline-flex; align-items: baseline; gap: 10px; }
+.redit { font-size: 12.5px; font-style: normal; font-weight: 500; color: var(--accent); border-radius: 6px; padding: 0 2px; transition: opacity var(--t-fast) var(--ease); }
+.redit:hover { text-decoration: underline; text-underline-offset: 2px; }
+.redit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Hover actions (copy / recall). Also revealed on tap for touch devices. */
 .msg-actions {
@@ -1131,7 +1135,14 @@ const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const mqSb = matchMedia('(min-width: 761px)');    // sidebar docked
 const mqInfo = matchMedia('(min-width: 1100px)'); // info panel docked
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const wireId = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
+/* Message ids double as READ TAGS: every message gets its own, receipts name
+   the tag they are about, and each bubble in the DOM carries it (data-rid).
+   96 random bits + a timestamp, so two messages can't share a tag. */
+const wireId = () => {
+  const r = crypto.getRandomValues(new Uint32Array(3));
+  return Date.now().toString(36) + Array.from(r, n => n.toString(36)).join('');
+};
+const validTag = id => typeof id === 'string' && id.length > 0 && id.length <= 64 && /^[\w-]+$/.test(id);
 
 /* Retrigger a CSS animation class */
 function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
@@ -1468,7 +1479,11 @@ messages.addEventListener('scroll', () => {
 toBottom.addEventListener('click', () => scrollBottom(true));
 
 function bubbleHTML(m) {
-  if (m.recalled) return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span></div>`;
+  if (m.recalled) {
+    // The author can take their text back into the composer (kept in memory only).
+    const edit = m.from === 'me' && m._orig ? `<button type="button" class="redit" data-act="reedit">Edit</button>` : '';
+    return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span>${edit}</div>`;
+  }
   const meta = `<span class="meta"><time>${fmtTime(m.t)}</time>${m.from === 'me' ? tick(m.status) : ''}</span>`;
   // File attachments get their own bubble shape; text falls through to the
   // standard [object Object] guard below.
@@ -1550,12 +1565,12 @@ function fileBubbleHTML(m, meta) {
 }
 function actionsHTML(m) {
   if (m.recalled) return '';
-  return `<div class="msg-actions"><button class="hv" data-act="copy" aria-label="Copy message" title="Copy">${ic('copy', 15)}</button>${m.from === 'me' ? `<button class="hv" data-act="recall" aria-label="Recall message" title="Recall">${ic('undo', 15)}</button>` : ''}</div>`;
+  return `<div class="msg-actions"><button class="hv" data-act="copy" aria-label="Copy message" title="Copy">${ic('copy', 15)}</button>${canRecall(m) ? `<button class="hv" data-act="recall" aria-label="Recall message" title="Recall">${ic('undo', 15)}</button>` : ''}</div>`;
 }
 function msgEl(m, { enter = false, delay = 0 } = {}) {
   const el = document.createElement('div');
   el.className = `msg ${m.from === 'me' ? 'self' : 'other'}${enter ? ' enter' : ''}`;
-  el.dataset.mid = m.id; el.dataset.from = m.from; el.dataset.t = m.t.getTime();
+  el.dataset.mid = m.id; el.dataset.rid = m.id; el.dataset.from = m.from; el.dataset.t = m.t.getTime();
   if (delay) el.style.setProperty('--d', delay + 'ms');   // 60ms stagger for multi-arrivals
   el.innerHTML = bubbleHTML(m) + actionsHTML(m);
   return el;
@@ -1585,7 +1600,7 @@ function renderMessages() {
   messages.scrollTop = messages.scrollHeight;
   if (csearch.classList.contains('open')) runSearch();
   syncTyping();
-  armReadObserver();   // visibility-gated read receipts for this freshly-painted thread
+  readTracker.arm();   // per-message read tracking for this freshly-painted thread
   pinned = true;
   renderPendingOffers();   // incoming file requests that arrived while another chat was open
 }
@@ -1614,7 +1629,7 @@ function appendMessage(m, { delay = 0 } = {}) {
     clearTimeout(typingHideTimer);
     typingRow.classList.remove('typing-row', 'enter', 'leaving');
     typingRow.className = `msg other morph`;
-    typingRow.dataset.mid = m.id; typingRow.dataset.from = m.from; typingRow.dataset.t = m.t.getTime();
+    typingRow.dataset.mid = m.id; typingRow.dataset.rid = m.id; typingRow.dataset.from = m.from; typingRow.dataset.t = m.t.getTime();
     typingRow.innerHTML = bubbleHTML(m) + actionsHTML(m);
     /* Drop the now-stale dots / any "leaving" class so the next typing
        burst can start from a clean row. */
@@ -1623,10 +1638,10 @@ function appendMessage(m, { delay = 0 } = {}) {
     thread.insertBefore(el, typingRow);
   }
   markGroups();
-  // Watch the new row so it earns a read receipt the moment it scrolls into
-  // view (delivered-only if the user is scrolled up or the chat isn't active).
+  // Hand the new row to the read tracker: it earns a read receipt only once the
+  // user has really looked at it (see READ RECEIPTS below).
   const newEl = typingRow && m.from === 'them' ? typingRow : $$('.msg[data-mid]', thread).pop();
-  readIO?.observe(newEl);
+  readTracker.track(newEl);
   // A message just filled a previously-empty conversation: if the peer is
   // still typing, the three-dot row can now live on the real thread, so show
   // it (it was suppressed while the pane was on the "No messages" placeholder).
@@ -1636,39 +1651,108 @@ function appendMessage(m, { delay = 0 } = {}) {
 messages.addEventListener('animationend', e => { if (e.target.classList?.contains('msg')) e.target.classList.remove('enter'); });
 
 /* ==========================================================================
-   READ-RECEIPT VISIBILITY
-   "Read" is gated on the message actually being scrolled into the active
-   chat's viewport (IntersectionObserver over the active thread's .msg rows),
-   NOT on the chat tab being active. A row the user scrolls past / a chat the
-   user isn't viewing never earns a "read" — it stays "delivered" until
-   actually seen. When a peer's row first intersects, we fire the read
-   receipt (P2P fast path + durable KV ack) exactly once.
+   READ RECEIPTS
+   A message is "read" only when the user has really looked at THAT message:
+
+     1. the chat is in front: tab visible, window focused, no full-screen
+        viewer on top, and (on phones) the chat list isn't covering the thread
+     2. the message's own bubble is on screen: >= 90% of it, or, if it is taller
+        than the thread, >= 90% of the thread's height
+     3. and it stays that way for DWELL ms, so scrolling past doesn't count
+
+   Being "in this chat" is not enough: a message above the fold, behind another
+   window, or scrolled past in a flash never earns a receipt. Every message is
+   tracked on its own, keyed by its unique tag (data-rid = message id), and each
+   one is committed once; commits that land together are sent as one batch.
+
+   "Delivered" (the single tick) is separate and is sent when a message lands.
    ========================================================================== */
-let readIO = null;               // active observer for the current thread
-const readObserved = new Set();  // row ids already fired for (per re-open)
-function armReadObserver() {
-  // One observer per thread (re-created on each renderMessages/openConversation).
-  if (readIO) readIO.disconnect();
-  readObserved.clear();
-  readIO = new IntersectionObserver(entries => {
-    const c = cur(); if (!c?.friend) return;
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      const row = e.target; const mid = row.dataset.mid;
-      if (readObserved.has(mid)) continue;
-      readObserved.add(mid);
-      const m = c.messages.find(x => x.id === mid);
-      // Only a peer's message that hasn't been read yet earns a receipt.
-      if (m && m.from === 'them' && m.status !== 'read') {
-        console.log(`[wh tick] IO read @ ${c.name}: ${mid} (row 90% in viewport)`);
-        setStatus(c, m, 'read');
-        sendReadReceipt(c.friendId, 'read', [mid]);   // instant
-        sendAck(c.friendId, 'read', [mid]);            // durable
+const readTracker = (() => {
+  const DWELL = 450, FRACTION = 0.9;
+  const pending = new Map();    // rid -> { m, row, peer }   unread incoming messages of the open thread
+  const timers = new Map();     // rid -> dwell timer
+  const outgoing = new Map();   // peer -> Set(rid)          committed, waiting for the batched send
+  let raf = 0, flushT = 0;
+
+  const attentive = () => started
+    && document.visibilityState === 'visible'
+    && document.hasFocus()
+    && !app.inert
+    && (mqSb.matches || app.dataset.sidebar !== 'open');
+
+  function onScreen(row) {
+    const r = row.getBoundingClientRect(), v = messages.getBoundingClientRect();
+    if (!r.height || !v.height) return false;
+    const shown = Math.min(r.bottom, v.bottom) - Math.max(r.top, v.top);
+    return shown >= Math.min(r.height, v.height) * FRACTION;
+  }
+  function forget(rid) { pending.delete(rid); clearTimeout(timers.get(rid)); timers.delete(rid); }
+
+  function evaluate() {
+    raf = 0;
+    const ok = attentive();
+    for (const [rid, p] of pending) {
+      if (!p.row.isConnected) { forget(rid); continue; }
+      const seen = ok && onScreen(p.row);
+      if (seen && !timers.has(rid)) timers.set(rid, setTimeout(() => commit(rid), DWELL));
+      else if (!seen && timers.has(rid)) { clearTimeout(timers.get(rid)); timers.delete(rid); }
+    }
+  }
+  const poke = () => { if (!raf) raf = requestAnimationFrame(evaluate); };
+
+  function commit(rid) {
+    timers.delete(rid);
+    const p = pending.get(rid); if (!p) return;
+    if (!attentive() || !p.row.isConnected || !onScreen(p.row)) { poke(); return; }   // looked away at the last moment
+    forget(rid);
+    const c = byId(p.peer), m = p.m;
+    if (!c || m.recalled || m.status === 'read') return;
+    console.log(`[wh read] ${c.name}: ${rid} seen for ${DWELL}ms -> read`);
+    setStatus(c, m, 'read'); persistMessages(c);
+    if (m.untracked) return;   // sender gave it no valid tag: nothing to acknowledge
+    if (!outgoing.has(p.peer)) outgoing.set(p.peer, new Set());
+    outgoing.get(p.peer).add(rid);
+    clearTimeout(flushT); flushT = setTimeout(flush, 80);
+  }
+  function flush() {
+    flushT = 0;
+    for (const [peer, ids] of outgoing) {
+      const all = [...ids];
+      for (let i = 0; i < all.length; i += MAX_ACK) {
+        const part = all.slice(i, i + MAX_ACK);
+        sendReadReceipt(peer, 'read', part);   // instant, if the P2P channel is up
+        sendAck(peer, 'read', part);           // durable, always
       }
     }
-  }, { root: messages, threshold: 0.9 });
-  $$('.msg[data-mid]', thread).forEach(r => readIO.observe(r));
-}
+    outgoing.clear();
+  }
+
+  function track(row) {
+    const rid = row?.dataset?.rid; if (!rid) return;
+    const c = cur(); if (!c?.friend) return;
+    const m = c.messages.find(x => x.id === rid);
+    if (!m || m.from !== 'them' || m.status === 'read' || m.recalled) return;
+    pending.set(rid, { m, row, peer: c.friendId });
+    poke();
+  }
+  function arm() {
+    for (const t of timers.values()) clearTimeout(t);
+    timers.clear(); pending.clear();
+    if (thread) $$('.msg[data-rid]', thread).forEach(track);
+    poke();
+  }
+
+  // Anything that can change what the user is looking at re-runs the check.
+  messages.addEventListener('scroll', poke, { passive: true });
+  window.addEventListener('resize', poke);
+  window.addEventListener('focus', poke);
+  window.addEventListener('blur', poke);
+  document.addEventListener('visibilitychange', poke);
+  mqSb.addEventListener('change', poke);
+  new MutationObserver(poke).observe(app, { attributes: true, attributeFilter: ['data-sidebar', 'data-info', 'inert'] });
+
+  return { arm, track, forget, poke, size: () => pending.size };
+})();
 
 /* Typing indicator row */
 // Pending 200ms fade-out of the typing row. Kept so the morph path in
@@ -1784,10 +1868,10 @@ function openConversation(id, { initial = false } = {}) {
     void ensureP2P(c.id);
     // Opening the chat makes their unacknowledged messages DELIVERED to me
     // (single tick), not read — "I'm on the tab" alone isn't "I read it".
-    // The IntersectionObserver (armReadObserver) fires "read" per message the
-    // moment that specific bubble is actually in the viewport. Send "seen" for
-    // the recent batch so the sender's tick moves off "sent"; the IO handles
-    // the upgrade to "read" with durable acks.
+    // The read tracker (readTracker) upgrades each message to "read" only once
+    // that specific bubble has been on screen, with the chat in front, for a
+    // moment. Send "seen" for the recent batch so the sender's tick moves off
+    // "sent"; the tracker handles the upgrade to "read" with durable acks.
     const deliveredFromThem = c.messages.filter(x => x.from === 'them' && x.status !== 'read').slice(-20).map(x => x.id);
     if (deliveredFromThem.length) {
       sendReadReceipt(c.id, 'seen', deliveredFromThem);
@@ -1864,7 +1948,10 @@ messages.addEventListener('click', e => {
   if (act && row) {
     const m = cur()?.messages.find(x => x.id === row.dataset.mid);
     if (!m) return;
-    if (act.dataset.act === 'copy') copyText(m.file ? (m.file.name || '') : (m.text || ''), act); else recall(m, row);
+    const kind = act.dataset.act;
+    if (kind === 'copy') copyText(m.file ? (m.file.name || '') : (m.text || ''), act);
+    else if (kind === 'recall') recall(m, row);
+    else if (kind === 'reedit') reedit(m, row);
     row.classList.remove('tap'); return;
   }
   if (e.target.closest('.bubble') && row && !e.target.closest('[data-zoom], [data-fdl], [data-fask], video, audio')) {   // touch: tap a bubble to reveal its actions
@@ -1894,16 +1981,159 @@ function morphCopyBtn(btn) {
     svg.innerHTML = ICONS.copy;                   // check -> copy
   }, 900);
 }
-/* Recall: bubble fades/scales out (200ms), swaps to a quiet placeholder, fades back in */
-function recall(m, row) {
-  const bub = $('.bubble', row); bub.classList.add('recalling');
-  setTimeout(() => {
-    m.recalled = true;
-    row.innerHTML = bubbleHTML(m);
-    const nb = $('.bubble', row); nb.classList.add('recalling'); void nb.offsetWidth; nb.classList.remove('recalling');
-    patchRow(cur());
-  }, reduce() ? 0 : 200);
+/* ==========================================================================
+   RECALL
+   The author can retract a message for RECALL_WINDOW_MS after sending it.
+
+     state    applyRecall   message -> tombstone (text and any attachment gone,
+                            blob deleted from IndexedDB, unread badge fixed)
+     live     P2P  { kind:'recall', ids }          the peer's UI updates at once
+     durable  POST /api/friends/recall             KV drops the ciphertext and keeps
+                                                   a tombstone, so an OFFLINE peer
+                                                   (or a new device) sees it too
+     retry    a persisted queue replays the call until the server answers, so a
+              recall made offline still happens; it also drops a message that is
+              still waiting in the P2P outbox so it can never arrive afterwards
+     peer     handlePeerRecall    only ever retracts the PEER'S OWN messages; a
+                            recall that outruns its message is remembered (c.tomb)
+
+   Text recalled by its author can be pulled back into the composer ("Edit").
+   ========================================================================== */
+const RECALL_WINDOW_MS = 10 * 60 * 1000;   // keep in step with RECALL_WINDOW_MS in functions/_lib/friends.js
+const canRecall = m => m.from === 'me' && !m.recalled
+  && !(m.file && (m.file.status === 'sending' || m.file.status === 'receiving'))
+  && Date.now() - (+m.t) <= RECALL_WINDOW_MS;
+
+/* 1. State only: turn the message into a tombstone. */
+function applyRecall(c, m, { mine }) {
+  if (m.recalled) return false;
+  if (mine && typeof m.text === 'string' && m.text) m._orig = m.text;       // memory only, powers "Edit"
+  if (m.file) {
+    viewer.drop(m.file.fileId);                                             // close the viewer if it shows this photo
+    idbDel(m.file.fileId).catch(() => {});
+    if (m.blobUrl) URL.revokeObjectURL(m.blobUrl);
+    const offerId = String(m.id).startsWith('file-') ? m.id.slice(5) : m.file.fileId;
+    const xfer = fileXfer.get(offerId); if (xfer) { xfer.aborted = true; fileXfer.delete(offerId); }
+    m.blob = null; m.blobUrl = null; m.file = undefined;
+  }
+  m.recalled = true; m.text = '';
+  readTracker.forget(m.id);
+  if (m.from === 'them' && m.status !== 'read' && c.id !== state.active && c.unread > 0) c.unread--;
+  persistMessages(c); patchRow(c);
+  return true;
 }
+
+/* 2. Paint: fade the bubble out, swap in the placeholder, fade back in. */
+function paintRecall(c, m, { animate = true } = {}) {
+  if (c.id !== state.active || !thread) return;
+  const row = $$('.msg[data-mid]', thread).find(r => r.dataset.mid === m.id); if (!row) return;
+  const old = $('.bubble', row), fancy = animate && !reduce() && old;
+  const swap = () => {
+    row.classList.remove('tap');
+    row.innerHTML = bubbleHTML(m) + actionsHTML(m);
+    const nb = $('.bubble', row);
+    if (fancy && nb) { nb.classList.add('recalling'); void nb.offsetWidth; nb.classList.remove('recalling'); }
+    markGroups();
+    if (csearch.classList.contains('open')) runSearch();
+  };
+  if (fancy) { old.classList.add('recalling'); setTimeout(swap, 200); } else swap();
+}
+
+/* 3. Network: a persisted queue, replayed until the server has the answer. */
+let recallQ = null;
+const recallKey = () => `wh-recall:${meId()}`;
+function recallQueue() {
+  const me = meId();
+  if (recallQ && recallQ._for === me) return recallQ;
+  let q = []; try { q = JSON.parse(localStorage.getItem(recallKey()) || '[]'); } catch { /* none */ }
+  recallQ = Array.isArray(q) ? q : []; recallQ._for = me;
+  return recallQ;
+}
+function saveRecallQueue() { try { localStorage.setItem(recallKey(), JSON.stringify(recallQ)); } catch { /* storage full / blocked */ } }
+function enqueueRecall(peer, m, fileId) {
+  const q = recallQueue();
+  if (!q.some(j => j.peer === peer && j.id === m.id)) q.push({ peer, id: m.id, at: +m.t, fileId: fileId || '', p2p: false, tries: 0, next: 0 });
+  saveRecallQueue();
+  // Still waiting in the P2P outbox? Then it must never be delivered after this.
+  const box = p2p.get(peer)?.outbox;
+  if (box) for (let i = box.length - 1; i >= 0; i--) if (box[i].msg?.msg?.id === m.id) box.splice(i, 1);
+  flushRecalls(peer);
+}
+let recallBusy = false;
+async function flushRecalls(onlyPeer) {
+  if (!meId()) return;
+  const q = recallQueue(); if (!q.length) return;
+  for (const j of q) {                                   // live path: once per job, when their channel is up
+    if (j.p2p || (onlyPeer && j.peer !== onlyPeer)) continue;
+    if (byId(j.peer)?.p2pState === 'open' && p2pControl(j.peer, { kind: 'recall', ids: [j.id] })) j.p2p = true;
+  }
+  if (recallBusy) return;
+  recallBusy = true;
+  try {
+    for (const j of [...q]) {
+      if (Date.now() < j.next) continue;
+      const r = await api('/api/friends/recall', { uuid: j.peer, id: j.id, at: j.at, fileId: j.fileId || undefined });
+      // Finished when the server took it, or refused for good (forbidden / too late
+      // / not friends): retrying can't change those. Network errors and 5xx retry.
+      const final = r.ok || (!r.network && r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 429);
+      if (final) q.splice(q.indexOf(j), 1);
+      else { j.tries++; j.next = Date.now() + Math.min(60000, 1000 * 2 ** j.tries); }
+    }
+  } finally { recallBusy = false; saveRecallQueue(); }
+}
+
+/* The author recalls one of their messages. */
+function recall(m, row) {
+  const c = cur(); if (!c?.friend) return;
+  if (!canRecall(m)) {
+    const late = Date.now() - (+m.t) > RECALL_WINDOW_MS;
+    toast(late ? 'Too late to recall: messages can be recalled for 10 minutes.' : 'Wait for the transfer to finish first.');
+    if (late) $('[data-act="recall"]', row)?.remove();
+    return;
+  }
+  const fileId = m.file?.fileId;                 // read before applyRecall clears it
+  applyRecall(c, m, { mine: true });
+  enqueueRecall(c.friendId, m, fileId);
+  paintRecall(c, m);
+}
+
+/* "Edit" on a recalled text message: its text goes back into the composer. */
+function reedit(m, row) {
+  if (!m._orig) return;
+  input.value = input.value.trim() ? `${input.value}\n${m._orig}` : m._orig;
+  delete m._orig;
+  $('.redit', row)?.remove();
+  input.dispatchEvent(new Event('input'));
+  input.focus();
+}
+
+/* The peer recalled message(s). */
+function handlePeerRecall(peerId, ids) {
+  const c = byId(peerId); if (!c) return;
+  for (const id of ids) {
+    if (!validTag(id)) continue;
+    const m = c.messages.find(x => x.id === id);
+    if (m) {
+      if (m.from !== 'them') continue;           // a peer can only retract their own messages
+      if (applyRecall(c, m, { mine: false })) paintRecall(c, m);
+    } else {
+      (c.tomb || (c.tomb = new Set())).add(id);  // the recall beat the message: remember it
+      if (id.startsWith('file-')) dropPendingOffer(id.slice(5));
+    }
+  }
+}
+/* An unanswered "incoming file" request whose sender took it back. */
+function dropPendingOffer(offerId) {
+  if (!pendingOffers.delete(offerId)) return;
+  answeredOffers.add(offerId);
+  $$('.msg[data-ask]', thread || document).forEach(r => { if (r.dataset.ask === offerId) r.remove(); });
+}
+// Recall buttons disappear on their own once the window closes.
+setInterval(() => {
+  if (!thread) return;
+  const now = Date.now();
+  $$('.msg.self [data-act="recall"]', thread).forEach(b => { const r = b.closest('.msg'); if (r && now - +r.dataset.t > RECALL_WINDOW_MS) b.remove(); });
+}, 15000);
 
 /* ==========================================================================
    IN-CHAT SEARCH
@@ -2096,6 +2326,7 @@ function persistMessages(c) {
   const slim = c.messages.map(m => ({
     id: m.id, from: m.from, text: m.text, t: +m.t,
     status: m.status || 'delivered',
+    recalled: m.recalled ? true : undefined,
     file: m.file ? { ...m.file, progress: m.file.progress } : undefined,
   }));
   if (slim.length) map[c.friendId] = slim; else delete map[c.friendId];
@@ -2107,7 +2338,8 @@ function restoreMessages(peer) {
   c.messages = slim.map(m => ({
     id: m.id, from: m.from, text: m.text, t: new Date(m.t),
     status: m.status || 'delivered',
-    file: m.file || undefined,
+    recalled: !!m.recalled,
+    file: m.recalled ? undefined : (m.file || undefined),
   }));
 }
 function clearCacheFor(peerId) {
@@ -2226,6 +2458,7 @@ async function syncLoop() {
     // cheap no-op when the panel is closed (refreshSharedFiles checks that).
     if (f.id === state.active) refreshSharedFiles(f.id);
   }
+  flushRecalls();   // replay any recall the server hasn't confirmed yet
   syncTimer = setTimeout(syncLoop, 1000);
 }
 
@@ -2477,6 +2710,15 @@ async function idbGet(fileId) {
     const rq = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(fileId);
     rq.onsuccess = () => res(rq.result ? rq.result.blob : null);
     rq.onerror = () => rej(rq.error);
+  });
+}
+
+async function idbDel(fileId) {
+  const db = await idb();
+  return new Promise(res => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(fileId);
+    tx.oncomplete = () => res(); tx.onerror = () => res();
   });
 }
 
@@ -2859,6 +3101,7 @@ messages.addEventListener('load', e => {
   const im = e.target; if (!(im instanceof HTMLImageElement) || !im.classList.contains('thumb')) return;
   im.closest('.tw')?.classList.add('ready');
   if (pinned) scrollBottom(false);
+  readTracker.poke();
 }, true);
 messages.addEventListener('error', e => {
   const im = e.target; if (!(im instanceof HTMLImageElement) || !im.classList.contains('thumb')) return;
@@ -3121,7 +3364,7 @@ const viewer = (() => {
   });
   window.addEventListener('resize', () => { if (isOpen && !closing) { layout(); clampPan(); apply('none'); } });
 
-  return { open, close, active: () => isOpen };
+  return { open, close, active: () => isOpen, drop: fileId => { if (isOpen && !closing && items[idx]?.file?.fileId === fileId) close(); } };
 })();
 
 messages.addEventListener('click', e => {
@@ -3205,6 +3448,9 @@ function handlePeerControl(peerId, raw) {
     case 'seen':
       markPeerSeen(peerId, data.ids || []);
       break;
+    case 'recall':
+      handlePeerRecall(peerId, Array.isArray(data.ids) ? data.ids.slice(0, 50) : []);
+      break;
     case 'typing':
       // The peer is (or is no longer) typing -> drive the three-dot row.
       {
@@ -3245,6 +3491,7 @@ function markPeerRead(peerId, ids) {
       setStatus(c, m, 'read');
     }
   });
+  persistMessages(c);
 }
 // The peer received these but is NOT in the chat → single tick (delivered).
 function markPeerSeen(peerId, ids) {
@@ -3283,15 +3530,18 @@ function sendReadReceipt(peerId, kind, ids) {
    P2P receipt above is the fast path; this one makes it stick. Batches up
    to MAX_ACK the caller hands over, capped to match the server. */
 const MAX_ACK = 50;
-function sendAck(peerId, kind, ids) {
+function sendAck(peerId, kind, ids, attempt = 0) {
   const me = meId();
   if (!me || !peerId || !ids.length) return;
-  const slice = ids.slice(0, MAX_ACK);
-  // Fire-and-forget: a failed ack silently degrades to the peer's P2P receipt
-  // (or a re-send on the next poll). No toast on every ack.
+  const slice = ids.filter(validTag).slice(0, MAX_ACK);
+  if (!slice.length) return;
+  // Fire-and-forget, but a network blip or a 5xx is retried (2s, 4s, 8s, 16s)
+  // so a read receipt isn't lost. No toast on every ack.
   api('/api/friends/ack', { uuid: peerId, kind, ids: slice })
-    .then(r => console.log(`[wh tick] KV ack ${kind} -> ${peerId} [${slice.join(', ')}] ${r.ok ? 'OK' : 'FAIL('+((r.data&&r.data.error&&r.data.error.code)||r.status)+')'}`))
-    .catch(() => console.log(`[wh tick] KV ack ${kind} -> ${peerId} [${slice.join(', ')}] NETWORK ERROR`));
+    .then(r => {
+      console.log(`[wh tick] KV ack ${kind} -> ${peerId} [${slice.join(', ')}] ${r.ok ? 'OK' : 'FAIL('+((r.data&&r.data.error&&r.data.error.code)||r.status)+')'}`);
+      if (!r.ok && (r.network || r.status >= 500) && attempt < 4) setTimeout(() => sendAck(peerId, kind, slice, attempt + 1), 2000 * 2 ** attempt);
+    });
 }
 
 /* ---- Send a "peer is typing" signal over P2P ----
@@ -3323,7 +3573,7 @@ function p2pSend(peerId, msg) {
   }
   if (entry?.outbox) {
     // Don't enqueue a duplicate of a message already waiting.
-    if (!entry.outbox.some(o => o.msg?.id && o.msg.id === wire.msg.id)) entry.outbox.push({ msg: wire });
+    if (!entry.outbox.some(o => o.msg?.msg?.id === wire.msg.id)) entry.outbox.push({ msg: wire });
   }
   ensureP2P(peerId);   // flushOutbox runs the moment the channel binds
 }
@@ -3331,6 +3581,7 @@ function p2pSend(peerId, msg) {
 function setP2pState(peerId, p2pState) {
   const c = byId(peerId); if (!c) return;
   c.p2pState = p2pState;
+  if (p2pState === 'open') flushRecalls(peerId);   // tell them about recalls made while they were away
   // Presence: ONLY a live, confirmed channel (p2pState === 'open') means the
   // peer is actually on their device. 'connect' is "we're trying to reach
   // them" — the peer may not be online at all, so it must NOT count online.
@@ -3428,7 +3679,8 @@ async function loadHistory(peerId) {
     const incoming = (r.data.msgs || [])
       .map(m => ({
         id: m.id, from: m.from === meId() ? 'me' : 'them',
-        text: m.unreadable ? '[unreadable message]' : (typeof m.text === 'string' ? m.text : ''),
+        text: m.recalled ? '' : m.unreadable ? '[unreadable message]' : (typeof m.text === 'string' ? m.text : ''),
+        recalled: !!m.recalled,
         t: new Date(+m.at || Date.now()),
         // Durably restore MY tick from the peer's persisted receipts. For
         // messages I sent (from 'me'), the server resolves peerRead/peerSeen
@@ -3441,11 +3693,19 @@ async function loadHistory(peerId) {
         // 'read' here is exactly what suppressed the read receipt when the
         // peer re-pulled history after being offline (bug B) and what made a
         // never-viewed message count as read (bug A).
-        status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : 'delivered',
+        status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : (m.mineRead ? 'read' : 'delivered'),
       }))
-      .filter(m => m.text);
+      .filter(m => m.text || m.recalled);
+    // (0) Recalls and my own earlier reads, learned from the archive.
+    incoming.forEach(m => {
+      const lm = local.get(m.id); if (!lm) return;
+      if (m.recalled && !lm.recalled && lm.from === m.from) {
+        if (applyRecall(c, lm, { mine: lm.from === 'me' })) paintRecall(c, lm);
+      }
+      if (m.from === 'them' && m.status === 'read' && lm.status !== 'read') { lm.status = 'read'; readTracker.forget(lm.id); }
+    });
     // (1) Brand-new records I don't hold -> append.
-    const fresh = incoming.filter(m => !have.has(m.id));
+    const fresh = incoming.filter(m => !have.has(m.id) && !c.tomb?.has(m.id));
     // (2) Records I already hold -> upgrade tick only (never downgrade).
     // A peer who came back online and read/delivered an old message flips my
     // tick even though P2P was down when they did it (durable receipt path).
@@ -3652,8 +3912,13 @@ function receiveFromPeer(peerId, raw) {
   // De-dup by id (NOT id+from): the same logical message is also archived to
   // KV, which loadHistory merges in from the *sender's* side. A by-id check
   // means a P2P copy and a KV copy can never both land in the list.
+  // The sender's tag is what every receipt refers to, so it must be well-formed.
+  // A message without one still renders, but can't be acknowledged.
+  const tagged = validTag(data.id);
+  if (tagged && c.tomb?.has(data.id)) return;   // it was recalled before it even reached us
   const m = {
-    id: data.id || wireId(),
+    id: tagged ? data.id : wireId(),
+    untracked: !tagged,
     from: 'them',
     text,
     t: new Date(atMs),
@@ -3662,26 +3927,31 @@ function receiveFromPeer(peerId, raw) {
     // above). Default to delivered so the tick doesn't over-claim.
     status: 'delivered',
   };
-  if (!c.messages.some(x => x.id === m.id)) c.messages.push(m);
+  if (c.messages.some(x => x.id === m.id)) {   // already have it (KV copy arrived first): just re-confirm delivery
+    if (tagged) { sendReadReceipt(peerId, 'seen', [m.id]); sendAck(peerId, 'seen', [m.id]); }
+    return;
+  }
+  c.messages.push(m);
   persistMessages(c);   // keep the localStorage mirror in step (fast reopen)
   // A real message just landed: the peer is no longer "typing" (they sent it).
   // Clear any lingering indicator on this peer so the three dots don't stick.
   if (c.typing) setTyping(c, false);
   const isActive = peerId === state.active;
+  // Follow the conversation only if the reader is already at the bottom. If they
+  // scrolled up to read something, leave them there: the message stays unread
+  // until they scroll down to it (the "to bottom" button shows).
+  const follow = isActive && nearBottom();
   if (isActive) appendMessage(m);
   else c.unread += 1;
   patchRow(c, { pulse: !isActive && !c.muted });
-  if (isActive) requestAnimationFrame(() => scrollBottom(true));
+  if (follow) requestAnimationFrame(() => scrollBottom(true));
 
   // Delivery, not read. A just-landed message is "delivered" to the sender's
   // tick the moment it reaches this device — it is NOT yet "read". The
-  // IntersectionObserver (armReadObserver) is the single source of truth for
-  // "read": it fires the read receipt only when this specific bubble is
-  // actually in the viewport. We deliberately do NOT decide "read" here via
-  // nearBottom() — that test ran against the pre-append scroll position and
-  // disagreed with the IO, which is what produced false "read" ticks.
-  sendReadReceipt(peerId, 'seen', [m.id]);
-  sendAck(peerId, 'seen', [m.id]);
+  // readTracker is the single source of truth for "read": it fires the receipt
+  // only when this specific bubble has actually been on screen, in a focused
+  // window. We deliberately do NOT decide "read" here (e.g. via nearBottom()).
+  if (tagged) { sendReadReceipt(peerId, 'seen', [m.id]); sendAck(peerId, 'seen', [m.id]); }
 }
 
 
