@@ -7,4 +7,6 @@ Permissions-Policy: camera=(), microphone=(), geolocation=()
 # connect-src keeps 'self' + a wildcard wss: for those relay WebSockets:
 # - nostr nips-02 signaling: wss://<host>
 # - CDN: trystero bundle + the +esm re-export shim
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.run; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss: https://cdn.jsdelivr.net https://esm.run; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+# img-src / media-src include blob: because received photos, videos and audio
+# are shown from in-browser Blob URLs (thumbnails, image viewer, players).
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://esm.run; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss: https://cdn.jsdelivr.net https://esm.run; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
