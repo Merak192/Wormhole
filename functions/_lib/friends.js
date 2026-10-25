@@ -11,7 +11,10 @@
  *  pairkey:<A>:<B>  (A < B)  ->  JSON { k }   (k = base64url 32-byte AES key)
  *  hist:<A>:<B>     (A < B)  ->  JSON array
  *     [{ id, from, c (base64url GCM blob), at,
- *        hiddenBy:[u], seenBy:[u], readBy:[u] }]
+ *        hiddenBy:[u], seenBy:[u], readBy:[u],
+ *        recalled?:true, recalledAt? }]
+ *     A RECALLED record is a tombstone: `c` is deleted (the ciphertext is gone
+ *     from KV), the id/from/at stay so the peer's devices learn about the recall.
  *     c = { v:1, iv, ct, tag } base64url, one record per message (capped)
  *     hiddenBy = users who cleared it; seenBy/readBy = durable receipts
  *     (readBy ⊇ seenBy), written only by the message's RECEIVER.
@@ -20,6 +23,12 @@
  * two logged-in devices (DTLS-encrypted). The AES here is what makes the *persisted*
  * history safe at rest and recoverable on a new device. See "Known limits" in README.
  */
+
+// How long after sending a message its author may still recall it. The client
+// has the same constant (RECALL_WINDOW_MS in index.html); the server adds a
+// small grace so clock skew can't reject a recall the UI still offered.
+export const RECALL_WINDOW_MS = 10 * 60 * 1000;
+export const RECALL_GRACE_MS = 15 * 1000;
 
 export const HISTORY_CAP = 200;          // last N messages kept per pair in KV
 export const HISTORY_TTL = 60 * 60 * 24 * 365 * 10; // keep history long-term; KV TTL is a hint
@@ -186,7 +195,8 @@ export async function pushHistory(kv, a, b, msg) {
     // of its receipt/hidden flags (an ack or clear may have landed since we
     // first pushed) — rather than overwriting them with blank arrays. Only
     // refresh the content if the copy we hold is missing the encrypted blob.
-    if (existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
+    // A recalled tombstone must never be resurrected by a late/duplicate push.
+    if (!existing.recalled && existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
     withFlags(existing);   // normalize (backfill seenBy/readBy on old records)
   } else {
     const rec = { id: msg.id, from: msg.from, c: msg.c, at: msg.at };
@@ -214,9 +224,15 @@ export async function readHistory(kv, meId, peerId) {
   const out = [];
   for (const m of arr) {
     let text;
-    try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
+    if (m.recalled) text = '';   // tombstone: nothing to decrypt, and nothing to show
+    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; } }
     out.push({
       id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      recalled: !!m.recalled,
+      // Did *I* (the caller) already see/read a record the peer sent me? Lets a
+      // fresh device restore "read" locally instead of re-acknowledging it.
+      mineSeen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(meId),
+      mineRead: m.from === peerId && (Array.isArray(m.readBy) ? m.readBy : []).includes(meId),
       // Did the PEER see/read a record the peer SENT (from === peerId)? The
       // receiver-side ack of the peer's own message.
       seen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
@@ -335,9 +351,15 @@ export async function readVisibleHistory(kv, meId, peerId) {
     const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy : [];
     if (hb.includes(meId)) continue;   // this user opted out of this record
     let text;
-    try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; }
+    if (m.recalled) text = '';   // tombstone: nothing to decrypt, and nothing to show
+    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; } }
     out.push({
       id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      recalled: !!m.recalled,
+      // Did *I* (the caller) already see/read a record the peer sent me? Lets a
+      // fresh device restore "read" locally instead of re-acknowledging it.
+      mineSeen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(meId),
+      mineRead: m.from === peerId && (Array.isArray(m.readBy) ? m.readBy : []).includes(meId),
       // Did the PEER see/read a record the peer SENT (from === peerId)? The
       // receiver-side ack of the peer's own message.
       seen: m.from === peerId && (Array.isArray(m.seenBy) ? m.seenBy : []).includes(peerId),
@@ -349,4 +371,51 @@ export async function readVisibleHistory(kv, meId, peerId) {
     });
   }
   return out;
+}
+
+/* ── recall ─────────────────────────────────────────────────────
+   The AUTHOR of a message can retract it within RECALL_WINDOW_MS. Recalling:
+     - deletes the encrypted content from KV (the record becomes a tombstone),
+     - keeps { id, from, at, recalled:true } so the peer's devices — which may be
+       offline right now — learn about it on their next history poll,
+     - never resurrects: pushHistory ignores late copies of a recalled id.
+   A tombstone is also created for an id KV has not seen yet (the archive write
+   can lose a race with the recall, and file messages are never archived at all),
+   so the peer still gets told.
+   Returns { ok:true, tombstoned } | { ok:false, code } with code one of
+   'forbidden' (not your message) | 'too_late'. */
+export async function recallMessage(kv, userId, peerId, id, atHint) {
+  const key = histKey(userId, peerId);
+  const arr = (await kv.get(key, 'json')) || [];
+  const now = Date.now();
+  let rec = arr.find(x => x.id === id);
+  if (rec) {
+    if (rec.from !== userId) return { ok: false, code: 'forbidden' };
+    if (!rec.recalled && now - rec.at > RECALL_WINDOW_MS + RECALL_GRACE_MS) return { ok: false, code: 'too_late' };
+    if (rec.recalled) return { ok: true, tombstoned: false };   // idempotent
+    delete rec.c;
+    rec.recalled = true; rec.recalledAt = now;
+    withFlags(rec);
+  } else {
+    // Unknown id: trust the author's timestamp only inside a sane range.
+    const at = Number.isFinite(atHint) && atHint <= now && atHint > now - 30 * 864e5 ? atHint : now;
+    if (now - at > RECALL_WINDOW_MS + RECALL_GRACE_MS) return { ok: false, code: 'too_late' };
+    rec = { id, from: userId, at, recalled: true, recalledAt: now };
+    withFlags(rec);
+    arr.push(rec);
+    arr.sort((a, b) => a.at - b.at);
+  }
+  while (arr.length > HISTORY_CAP) arr.shift();
+  const kept = arr.filter(m => !isPurged(m, userId, peerId));
+  await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
+  return { ok: true, tombstoned: true };
+}
+
+/** Remove one attachment's metadata record (used when a file message is recalled). */
+export async function dropFileMeta(kv, a, b, fileId) {
+  const key = filesKey(a, b);
+  const arr = (await kv.get(key, 'json')) || [];
+  const next = arr.filter(x => x.fileId !== fileId);
+  if (next.length !== arr.length) await kv.put(key, JSON.stringify(next), { expirationTtl: HISTORY_TTL });
+  return next.length !== arr.length;
 }
