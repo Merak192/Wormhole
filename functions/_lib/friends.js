@@ -9,14 +9,19 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  friend:<A>:<B>   (A < B)  ->  JSON { status:"pending"|"friend", by, at }
  *  pairkey:<A>:<B>  (A < B)  ->  JSON { k }   (k = base64url 32-byte AES key)
+ *  clr:<U>:<P>      (directional) -> JSON { ids:[msgId] }
+ *     The ACCOUNT-level "cleared" ledger: ids of the messages user U has cleared
+ *     in the chat with P. Written ONLY by U's own clear, but shared by ALL of U's
+ *     devices, so a clear on any one device hides the message on every device.
+ *     A message is destroyed from hist when its id is in BOTH users' ledgers.
  *  hist:<A>:<B>     (A < B)  ->  JSON array
  *     [{ id, from, c (base64url GCM blob), at,
- *        hiddenBy:[u], seenBy:[u], readBy:[u],
+ *        hiddenBy:[u] (legacy, still honoured), seenBy:[u], readBy:[u],
  *        recalled?:true, recalledAt? }]
  *     A RECALLED record is a tombstone: `c` is deleted (the ciphertext is gone
  *     from KV), the id/from/at stay so the peer's devices learn about the recall.
  *     c = { v:1, iv, ct, tag } base64url, one record per message (capped)
- *     hiddenBy = users who cleared it; seenBy/readBy = durable receipts
+ *     seenBy/readBy = durable receipts
  *     (readBy ⊇ seenBy), written only by the message's RECEIVER.
  *
  * Live P2P is NOT in KV: the real-time path is a WebRTC DataChannel between the
@@ -93,7 +98,7 @@ export async function pushFileMeta(kv, a, b, meta) {
 /** Read the pair's file-metadata list, filtered to records not hidden for me. */
 export async function readFileMeta(kv, meId, peerId) {
   const arr = (await kv.get(filesKey(meId, peerId), 'json')) || [];
-  // metadata has no per-user hiddenBy (clear conversation doesn't touch it);
+  // metadata is not per-user hidden (clear conversation doesn't touch it);
   // return oldest->newest.
   return arr;
 }
@@ -151,7 +156,7 @@ export async function decryptMsg(key, blob) {
  * `markHiddenForUser` on every clear, `markAckForUser` on every read/delivered
  * ack, and both sides' clients — so all three NEVER clobber a flag another
  * writer just set. Concretely:
- *   - a NEW record always starts with `hiddenBy:[], seenBy:[], readBy:[]`;
+ *   - a NEW record always starts with `seenBy:[], readBy:[]`;
  *   - `readBy` is a strict superset of `seenBy` (read implies seen);
  *   - on DEDUPE we keep the EXISTING record and ALL its flags as-is;
  *   - the cap trim drops the oldest records, and a record hidden by BOTH users
@@ -159,6 +164,41 @@ export async function decryptMsg(key, blob) {
  * The sender never writes readBy/seenBy — it only READS the peer's membership
  * (see readVisibleHistory) to compute the tick.
  */
+
+/* ── account-level "cleared" ledger ─────────────────────────────
+   Clearing is a property of the ACCOUNT, not of a device or of a single
+   record's flags:
+     - user A clears (on any device)  -> A's ledger gains those message ids; A
+       no longer sees them on ANY of A's devices.
+     - user B clears the same ids too -> the ids are in both ledgers, so the
+       message is DESTROYED from KV.
+   The ledger keeps the ids even after the record is destroyed, so a stale
+   device that still holds a copy can learn it is gone, and a late duplicate
+   push can't resurrect it. Ids (not timestamps) are used on purpose: the same
+   message carries the sender's clock over P2P and the server's clock in KV. */
+export const clearKey = (owner, peer) => `clr:${owner}:${peer}`;
+export const CLEARED_CAP = 600;   // newest N cleared ids remembered per user per chat
+
+export async function readCleared(kv, owner, peer) {
+  const v = await kv.get(clearKey(owner, peer), 'json');
+  return Array.isArray(v?.ids) ? v.ids.filter(x => typeof x === 'string') : [];
+}
+
+/** { [a]: Set, [b]: Set } of cleared ids for both users of a pair. */
+async function loadCleared(kv, a, b) {
+  const [ca, cb] = await Promise.all([readCleared(kv, a, b), readCleared(kv, b, a)]);
+  return { [a]: new Set(ca), [b]: new Set(cb) };
+}
+
+/** Has `uid` cleared this record? (ledger, or the legacy per-record hiddenBy) */
+function isHiddenFor(m, uid, cleared) {
+  return !!cleared[uid]?.has(m.id) || (Array.isArray(m.hiddenBy) && m.hiddenBy.includes(uid));
+}
+
+/** Destroyed = cleared by BOTH accounts of the pair. */
+function isPurged(m, a, b, cleared) {
+  return isHiddenFor(m, a, cleared) && isHiddenFor(m, b, cleared);
+}
 
 /* De-dupe preserving order. */
 const uniq = ids => Array.from(new Set(ids));
@@ -172,7 +212,7 @@ const uniq = ids => Array.from(new Set(ids));
 function withFlags(m, { addSeen = [], addRead = [] } = {}) {
   // Ensure all three flag arrays exist (old records may lack seenBy/readBy)
   // and merge the new ids in additively.
-  m.hiddenBy = uniq([...(Array.isArray(m.hiddenBy) ? m.hiddenBy : [])]);
+  if (Array.isArray(m.hiddenBy)) m.hiddenBy = uniq(m.hiddenBy);   // legacy field: keep, never write new
   m.seenBy = uniq([...(Array.isArray(m.seenBy) ? m.seenBy : []), ...addSeen]);
   m.readBy = uniq([...(Array.isArray(m.readBy) ? m.readBy : []), ...addRead]);
   // read implies seen: anything read must also be seen.
@@ -180,15 +220,10 @@ function withFlags(m, { addSeen = [], addRead = [] } = {}) {
   return m;
 }
 
-/** A record purges only when BOTH users of the pair have hidden it. */
-function isPurged(m, a, b) {
-  const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy : [];
-  return hb.includes(a) && hb.includes(b);
-}
-
 export async function pushHistory(kv, a, b, msg) {
   const key = histKey(a, b);
-  const arr = (await kv.get(key, 'json')) || [];
+  const [arr0, cleared] = await Promise.all([kv.get(key, 'json'), loadCleared(kv, a, b)]);
+  const arr = arr0 || [];
   const existing = arr.find(x => x.id === msg.id);
   if (existing) {
     // De-dupe: the archive already has this logical message. Keep it — and all
@@ -199,13 +234,16 @@ export async function pushHistory(kv, a, b, msg) {
     if (!existing.recalled && existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
     withFlags(existing);   // normalize (backfill seenBy/readBy on old records)
   } else {
+    // A message both accounts already cleared is destroyed for good: a late or
+    // duplicate push must not bring it back.
+    if (isPurged({ id: msg.id }, a, b, cleared)) return arr.filter(m => !isPurged(m, a, b, cleared));
     const rec = { id: msg.id, from: msg.from, c: msg.c, at: msg.at };
-    withFlags(rec, {});   // -> hiddenBy/seenBy/readBy all []
+    withFlags(rec, {});   // -> seenBy/readBy []
     arr.push(rec);
   }
-  // newest last; cap from the front; drop both-hidden records.
+  // newest last; cap from the front; drop records both accounts cleared.
   while (arr.length > HISTORY_CAP) arr.shift();
-  const kept = arr.filter(m => !isPurged(m, a, b));
+  const kept = arr.filter(m => !isPurged(m, a, b, cleared));
   await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
   return kept;
 }
@@ -246,60 +284,46 @@ export async function readHistory(kv, meId, peerId) {
   return out;
 }
 
-/* ── per-user visibility ("hiddenBy") ───────────────────────────
-   Clearing a conversation is NO LONGER a device-wide flag that hides every
-   message. Instead each history record carries a `hiddenBy` array of the
-   USER ids who have marked it hidden on their side:
-     - user A clears  -> every record the pair shares gets A's id in hiddenBy
-     - user B clears  -> B's id is added to the same records
-     - a record is DELETED only when BOTH users' ids are in hiddenBy, i.e.
-       each side has opted out of it. Until then the other side still sees it.
-   history-get returns only the records that do NOT carry the caller's own id.
-   This keeps the "the peer still sees my cleared chat" property exactly as
-   before, but models visibility per-record and per-user. */
+/* ── clear (per ACCOUNT, across all of its devices) ────────────
+   POST /api/friends/clear adds the ids the clearing device was showing to the
+   caller's ledger (clr:<me>:<peer>). Because the ledger belongs to the account,
+   every other device logged in to the same account drops those messages on its
+   next history poll. A record is physically DELETED from hist only when BOTH
+   accounts have cleared it; until then the other account still sees it. */
 
 /**
- * Mark `userId` as having hidden every record in the pair's history.
+ * Mark message ids as cleared by `userId` in the chat with `peerId`.
  *
- * "Clear" is per-user: it adds `userId` to the `hiddenBy` of every record the
- * pair currently shares. A record is physically deleted only when BOTH users of
- * the pair are in its `hiddenBy` — until then the other side still sees it.
- * Idempotent: clearing again is a no-op. Returns true if the array was
- * rewritten (at least one record gained `userId` or was pruned).
+ * `ids` = what the clearing device was showing (this also covers messages that
+ * never reached KV, e.g. file messages, so the account's OTHER devices drop
+ * them too). If no ids are supplied (an older client), every record currently
+ * in the pair's history is cleared.
  *
- * Concurrency note: this is a read-modify-write on eventually-consistent KV,
- * and it races with pushHistory (either side's new message) and with the
- * peer's own clear. We mitigate by (a) re-reading the array fresh at write time
- * is NOT possible here without a second round-trip, so instead we MERGE flags
- * additively: we only ever ADD userId to a record's hiddenBy and only PURGE a
- * record when BOTH ids are present. We never drop a peer id we didn't just add
- * — so the worst case under a lost-update is that a *new* record pushed by the
- * peer momentarily lacks userId's flag, which the next clear re-covers. That's
- * the safe direction (over-hiding a fresh message for a moment, not
- * resurrecting an old hidden one).
+ * Ordering is crash-safe: the ledger is written FIRST (worst case afterwards:
+ * hidden but not yet deleted), then records now cleared by both accounts are
+ * destroyed. Idempotent. Returns { cleared:[ids], added, purged }.
  */
-export async function markHiddenForUser(kv, userId, peerId) {
+export async function markHiddenForUser(kv, userId, peerId, ids) {
   const key = histKey(userId, peerId);
-  const arr = (await kv.get(key, 'json')) || [];
-  let changed = false;
-  const kept = [];
-  for (const m of arr) {
-    const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy.slice() : [];
-    if (!hb.includes(userId)) { hb.push(userId); changed = true; }
-    // Purge only when both sides of the pair have hidden this record.
-    const hideFromBoth = hb.includes(userId) && hb.includes(peerId);
-    if (hideFromBoth) continue;
-    // Write the merged hiddenBy back onto the record, then preserve the
-    // receipt flags through the rewrite (withFlags is additive + "read
-    // implies seen", and backfills seenBy/readBy on old records).
-    m.hiddenBy = hb;
-    withFlags(m);
-    kept.push(m);
+  const [arr, mine, theirs] = await Promise.all([
+    kv.get(key, 'json').then(v => v || []),
+    readCleared(kv, userId, peerId),
+    readCleared(kv, peerId, userId),
+  ]);
+  const want = Array.isArray(ids) && ids.length ? ids : arr.map(m => m.id);
+  const set = new Set(mine);
+  let added = 0;
+  for (const id of want) if (!set.has(id)) { set.add(id); added++; }
+  const ledger = Array.from(set).slice(-CLEARED_CAP);   // Set keeps insertion order -> keep the newest
+  if (added || ledger.length !== mine.length) {
+    await kv.put(clearKey(userId, peerId), JSON.stringify({ ids: ledger }), { expirationTtl: HISTORY_TTL });
   }
-  if (changed || kept.length !== arr.length) {
-    await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
-  }
-  return changed;
+  // Destroy what BOTH accounts have now cleared.
+  const cleared = { [userId]: new Set(ledger), [peerId]: new Set(theirs) };
+  const kept = arr.filter(m => !isPurged(m, userId, peerId, cleared));
+  const purged = arr.length - kept.length;
+  if (purged) await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
+  return { cleared: ledger, added, purged };
 }
 
 /**
@@ -346,10 +370,10 @@ export async function markAckForUser(kv, userId, peerId, ids, kind) {
 export async function readVisibleHistory(kv, meId, peerId) {
   const keyB64 = await kv.get(pairKey(meId, peerId));
   const arr = (await kv.get(histKey(meId, peerId), 'json')) || [];
+  const mine = { [meId]: new Set(await readCleared(kv, meId, peerId)) };
   const out = [];
   for (const m of arr) {
-    const hb = Array.isArray(m.hiddenBy) ? m.hiddenBy : [];
-    if (hb.includes(meId)) continue;   // this user opted out of this record
+    if (isHiddenFor(m, meId, mine)) continue;   // my ACCOUNT cleared it (on any device)
     let text;
     if (m.recalled) text = '';   // tombstone: nothing to decrypt, and nothing to show
     else { try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; } }
@@ -386,7 +410,8 @@ export async function readVisibleHistory(kv, meId, peerId) {
    'forbidden' (not your message) | 'too_late'. */
 export async function recallMessage(kv, userId, peerId, id, atHint) {
   const key = histKey(userId, peerId);
-  const arr = (await kv.get(key, 'json')) || [];
+  const [arr0, cleared] = await Promise.all([kv.get(key, 'json'), loadCleared(kv, userId, peerId)]);
+  const arr = arr0 || [];
   const now = Date.now();
   let rec = arr.find(x => x.id === id);
   if (rec) {
@@ -406,7 +431,7 @@ export async function recallMessage(kv, userId, peerId, id, atHint) {
     arr.sort((a, b) => a.at - b.at);
   }
   while (arr.length > HISTORY_CAP) arr.shift();
-  const kept = arr.filter(m => !isPurged(m, userId, peerId));
+  const kept = arr.filter(m => !isPurged(m, userId, peerId, cleared));
   await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
   return { ok: true, tombstoned: true };
 }
