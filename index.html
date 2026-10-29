@@ -29,6 +29,7 @@
 :root {
   --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* the "out" curve used everywhere */
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* send-button release only */
+  --drawer: cubic-bezier(0.32, 0.72, 0, 1);      /* panels / drawers: fast start, long soft landing */
   --t-fast: 160ms;
   --t-base: 220ms;
   --t-msg: 320ms;
@@ -195,7 +196,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 /* ==========================================================================
    4. LAYOUT — mobile-first overlays, docked from 761px (sidebar) / 1100px (info)
    ========================================================================== */
-.app { display: flex; height: 100%; background: var(--surface); position: relative; }
+.app { display: flex; height: 100%; background: var(--surface); position: relative; overflow: hidden; }
 
 /* ---- Sidebar ---- */
 .sidebar {
@@ -204,7 +205,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   padding-top: env(safe-area-inset-top, 0px);
   background: var(--side); display: flex; flex-direction: column; min-height: 0;
   transform: translateX(-100%); visibility: hidden;
-  transition: transform var(--t-slow) var(--ease), visibility 0s linear var(--t-slow);
+  transition: transform 460ms var(--drawer), visibility 0s linear 460ms;
 }
 .app[data-sidebar="open"] .sidebar { transform: none; visibility: visible; transition-delay: 0s; }
 .sidebar .av { --ring: var(--side); }
@@ -230,7 +231,11 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .indicator {
   position: absolute; left: 0; top: 0; width: 3px; height: 24px; border-radius: 0 3px 3px 0;
   background: var(--accent); opacity: 0;
-  transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
+  /* transform/height are driven by placeIndicator() (Web Animations: the bar
+     stretches toward the new row with its leading edge first, then the tail
+     catches up), so only opacity is a CSS transition. */
+  transition: opacity var(--t-base) var(--ease);
+  will-change: transform, height;
 }
 .empty-note { padding: 28px 24px; color: var(--text-3); font-size: 13px; text-align: center; }
 
@@ -433,7 +438,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 /* Composer */
 .composer { padding: 8px 12px 14px; flex: none; }
 .composer-box {
-  max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px;
+  max-width: 760px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 8px;
   background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow-xs);
   transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease);
 }
@@ -576,7 +581,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   display: flex; flex-direction: column; min-height: 0; background: var(--surface);
   border-left: 1px solid var(--line); box-shadow: var(--shadow-lg);
   transform: translateX(100%); visibility: hidden;
-  transition: transform var(--t-slow) var(--ease), visibility 0s linear var(--t-slow);
+  transition: transform 460ms var(--drawer), visibility 0s linear 460ms;
 }
 .app[data-info="open"] .info { transform: none; visibility: visible; transition-delay: 0s; }
 .info-head { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 20px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
@@ -719,10 +724,11 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
    then the column is removed and the chat pane "settles" in with transform/opacity.
    ========================================================================== */
 @media (min-width: 761px) {
-  .sidebar { position: relative; inset: auto; width: 320px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; border-right: 1px solid var(--line); transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+  .sidebar { position: relative; inset: auto; width: 320px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; border-right: 1px solid var(--line); transition: none; }
   .app[data-sidebar="closed"] .sidebar { display: none; }
-  .app[data-sidebar="open"] .sidebar { animation: slideInL var(--t-slow) var(--ease) backwards; }
-  .sidebar.leaving { opacity: 0; transform: translateX(-16px); }
+  /* While sliding out, the panel is lifted out of the flow (the chat is already
+     at its final width) and slid away with transform only — see slideDocked(). */
+  .sidebar.leaving { position: absolute; top: 0; bottom: 0; left: 0; z-index: 6; }
   .btn-sb-collapse { display: grid; }
   .btn-sb-open { display: none; }
   .app[data-sidebar="closed"] .btn-sb-open { display: grid; }
@@ -734,10 +740,9 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 @keyframes slideInL { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
 
 @media (min-width: 1100px) {
-  .info { position: relative; inset: auto; width: 316px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; box-shadow: none; transition: opacity var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+  .info { position: relative; inset: auto; width: 316px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
   .app[data-info="closed"] .info { display: none; }
-  .app[data-info="open"] .info { animation: slideInR var(--t-slow) var(--ease) backwards; }
-  .info.leaving { opacity: 0; transform: translateX(16px); }
+  .info.leaving { position: absolute; top: 0; bottom: 0; right: 0; z-index: 6; }
   .scrim { display: none; }
 }
 @keyframes slideInR { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
@@ -1005,7 +1010,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   <div class="modal-backdrop" id="modalBackdrop"></div>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h2 id="modalTitle">Clear this conversation?</h2>
-    <p id="modalText">Messages in this chat will be hidden on your account. They stay available to the other person until they clear too — then they're deleted for both of you.</p>
+    <p id="modalText">Messages in this chat will be hidden on your account, on every device you're signed in on. They stay available to the other person until they clear them too — then they're deleted for both of you.</p>
     <div class="modal-actions">
       <button class="btn hv" id="modalCancel">Cancel</button>
       <button class="btn danger" id="modalConfirm">Clear conversation</button>
@@ -1261,22 +1266,48 @@ function settle(side) {
   chat.style.setProperty('--sx', side === 'left' ? '-10px' : '10px');
   replay(chat, 'settle');
 }
+/* Docked panels slide with transform only (no width animation, so the chat
+   never re-wraps frame by frame). The layout change happens once, up front:
+     - closing: the panel is lifted out of the flow (.leaving) and slides away;
+       the sidebar pushes the chat along with it (chat FLIP from +w -> 0).
+     - opening: the panel is in flow immediately and slides in; the sidebar
+       pulls the chat in behind it (chat FLIP from -w -> 0).
+   One drawer curve, WAAPI so it can be interrupted-safe via data-moving. */
+const DRAWER_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+function slideDocked(which, open, done) {
+  const el = which === 'info' ? info : sidebar;
+  const dir = which === 'info' ? 1 : -1;           // which way the panel leaves the screen
+  const w = el.offsetWidth || (which === 'info' ? 316 : 320);
+  const opts = { duration: 480, easing: DRAWER_EASE };
+  el.dataset.moving = '1';
+  const end = () => { delete el.dataset.moving; el.getAnimations().forEach(a => a.cancel()); chat.style.willChange = ''; done && done(); };
+  chat.style.willChange = 'transform';
+  let main;
+  if (open) {
+    main = el.animate([{ transform: `translateX(${dir * 100}%)`, opacity: 0.4 }, { transform: 'none', opacity: 1 }], opts);
+    if (which === 'sidebar') chat.animate([{ transform: `translateX(${-w}px)` }, { transform: 'none' }], opts);
+  } else {
+    el.classList.add('leaving');                    // out of the flow: chat is at its final width now
+    main = el.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${dir * 100}%)`, opacity: 0.4 }], { ...opts, fill: 'forwards' });
+    if (which === 'sidebar') chat.animate([{ transform: `translateX(${w}px)` }, { transform: 'none' }], opts);
+  }
+  main.finished.then(end, end);
+}
 function setPanel(which, open) {
   const el = which === 'info' ? info : sidebar;
   const docked = which === 'info' ? mqInfo.matches : mqSb.matches;
-  if (el.classList.contains('leaving')) return;
+  if (el.classList.contains('leaving') || el.dataset.moving) return;
   if ((app.dataset[which] === 'open') === open) return;
+  const animate = docked && !reduceMQ.matches && !!el.animate;
   if (open) {
     app.dataset[which] = 'open';
     if (which === 'info') playInfo();
-    if (docked) settle(which === 'info' ? 'right' : 'left');
+    if (animate) slideDocked(which, true);
     syncButtons();
-  } else if (docked) {
-    el.classList.add('leaving');
-    setTimeout(() => {
-      app.dataset[which] = 'closed'; el.classList.remove('leaving');
-      settle(which === 'info' ? 'right' : 'left'); syncButtons();
-    }, 200);
+  } else if (animate) {
+    slideDocked(which, false, () => {
+      app.dataset[which] = 'closed'; el.classList.remove('leaving'); syncButtons();
+    });
   } else {
     app.dataset[which] = 'closed'; syncButtons();
   }
@@ -1317,13 +1348,34 @@ function listSkeleton() {
   indicator.style.opacity = 0;
 }
 /* Active indicator: ONE element translated to the active row (shared-layout feel) */
+const IND_H = 24;
 function placeIndicator(animate) {
   const row = convList.querySelector(`.conv[data-id="${state.active}"]`);
-  if (!row) { indicator.style.opacity = 0; return; }
-  if (!animate) indicator.style.transition = 'none';
-  indicator.style.transform = `translateY(${row.offsetTop + (row.offsetHeight - 24) / 2}px)`;
+  if (!row) { indicator.getAnimations().forEach(a => a.cancel()); indicator.style.opacity = 0; return; }
+  const y = row.offsetTop + (row.offsetHeight - IND_H) / 2;
+  const wasHidden = indicator.style.opacity !== '1';
+  // Where the bar visually is RIGHT NOW (it may be mid-stretch): read the live
+  // computed values so an interrupted move continues from where the eye is.
+  const live = getComputedStyle(indicator);
+  const t0 = new DOMMatrix(live.transform).m42, h0 = parseFloat(live.height) || IND_H;
+  const run = indicator.getAnimations();
   indicator.style.opacity = 1;
-  if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
+  const snap = () => { run.forEach(a => a.cancel()); indicator.style.transform = `translateY(${y}px)`; indicator.style.height = IND_H + 'px'; };
+  if (!animate || wasHidden || reduceMQ.matches || !indicator.animate || Math.abs(t0 - y) < 0.5 && Math.abs(h0 - IND_H) < 0.5) { snap(); return; }
+  // Liquid move. Keyframe 1: the leading edge races to the target while the tail
+  // stays put, so the bar stretches across the gap (and swells a touch);
+  // keyframe 2: the tail catches up and the bar settles back to its size.
+  const top = Math.min(t0, y), bottom = Math.max(t0 + h0, y + IND_H);
+  const dist = Math.abs(y - t0);
+  const dur = Math.round(380 + Math.min(dist, 360) * 0.35);
+  indicator.style.transform = `translateY(${y}px)`;       // committed end state
+  indicator.style.height = IND_H + 'px';
+  run.forEach(a => a.cancel());
+  indicator.animate([
+    { transform: `translateY(${t0}px)`,  height: h0 + 'px',            width: '3px', easing: 'cubic-bezier(0.55, 0, 0.15, 1)' },
+    { transform: `translateY(${top}px)`, height: (bottom - top) + 'px', width: '4px', offset: 0.42, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+    { transform: `translateY(${y}px)`,   height: IND_H + 'px',          width: '3px' },
+  ], { duration: dur });
 }
 function patchRow(c, { pulse = false } = {}) {
   const row = convList.querySelector(`.conv[data-id="${c.id}"]`); if (!row) return;
@@ -2210,21 +2262,22 @@ $('#modalBackdrop').addEventListener('click', closeModal);
 $('#modalConfirm').addEventListener('click', async () => {
   const c = cur();
   if (c?.friend) {
-    // Per-user clear: tell the server to mark every record in this pair's
-    // KV history as hidden for ME. The records stay in KV (the peer still
-    // sees them); they're physically deleted only when the peer clears too.
-    // We do NOT wipe the local list optimistically: that clear round-trip is a
-    // read-modify-write on KV that races the 1s syncLoop and the peer's writes,
-    // so an optimistic blank can leave the pane "No messages" even for records
-    // still visible to me. Instead: wait for the server to confirm, then
-    // reconcile the local list to the server's visible set (old cleared records
-    // dropped, anything sent after the clear kept).
+    // Clearing is per ACCOUNT, not per device. We send the ids this device is
+    // showing; the server adds them to the account's cleared ledger
+    // (clr:<me>:<peer>), so every other device signed in to this account drops
+    // them on its next poll. The peer's copy stays in KV until the peer clears
+    // the same messages too — then the server destroys them.
+    // We wait for the server to confirm (no optimistic wipe): the clear is a
+    // read-modify-write that races the 1s syncLoop, and a failed clear must not
+    // leave the pane empty while the messages are still visible to this account.
     const friendId = c.friendId;
+    const ids = c.messages.filter(m => validTag(m.id)).map(m => m.id).slice(-400);
+    if (!ids.length) { closeModal(); toast('Conversation cleared'); return; }
     c._clearing = true;                 // guard: syncLoop merges wait for this
-    const res = await api('/api/friends/clear', { uuid: friendId });
+    const res = await api('/api/friends/clear', { uuid: friendId, ids });
     c._clearing = false;
     if (res.ok) {
-      await reconcileAfterClear(friendId);
+      applyCleared(c, ids.concat(res.data?.cleared || []));
       closeModal(); patchRow(c); renderMessages(); toast('Conversation cleared');
     } else {
       closeModal(); toast('Could not clear conversation');
@@ -2235,29 +2288,28 @@ $('#modalConfirm').addEventListener('click', async () => {
 });
 
 /**
- * After a confirmed per-user clear, trim the local message list to match the
- * server's visible set for me. `loadHistory` only ever *adds*, so we reconcile
- * explicitly: keep the in-memory messages whose ids the server still returns
- * to me (new, not-yet-hidden ones) and drop the old records I just hid.
- * Idempotent — if the server returns everything we already hold, nothing moves.
+ * Apply the account's cleared-ids ledger to a conversation: remember the ids
+ * (so later P2P/KV copies stay hidden) and drop every local copy, including the
+ * localStorage mirror. Called after this device clears AND on every history
+ * poll — that poll is how a clear made on ANOTHER device of the same account
+ * arrives. Messages mid-transfer are kept until the transfer settles.
+ * Returns true if any message was removed.
  */
-async function reconcileAfterClear(peerId) {
-  const c = byId(peerId); if (!c) return;
-  try {
-    const r = await api(`/api/friends/history-get?uuid=${peerId}`);
-    if (!r.ok || !r.data) return;      // keep in-memory; don't blank on error
-    keys.set(peerId, r.data.key);
-    // The visible set, oldest->newest. Any in-memory message not in this set is
-    // one I've now hidden -> remove it. Anything in the set not yet in memory
-    // -> keep as-is (newer, not hidden).
-    const visible = new Set((r.data.msgs || []).map(m => m.id));
-    const kept = c.messages.filter(m => visible.has(m.id));
-    if (kept.length !== c.messages.length) c.messages = kept;
-    // Keep the localStorage mirror in step with what I can actually see after
-    // the clear (old records dropped, post-clear messages kept) — otherwise a
-    // refresh would restore the very records I just cleared.
-    persistMessages(c);
-  } catch (e) { /* offline; leave the list as-is */ }
+function applyCleared(c, ids) {
+  if (!c) return false;
+  const set = c.clearedIds || (c.clearedIds = new Set());
+  const before = set.size;
+  for (const id of ids || []) if (typeof id === 'string') set.add(id);
+  if (!set.size) return false;
+  if (set.size !== before && c.friendId) clearedWrite(c.friendId, set);
+  const busy = m => m.file && ['sending', 'receiving'].includes(m.file.status);
+  const kept = c.messages.filter(m => !set.has(m.id) || busy(m));
+  if (kept.length === c.messages.length) return false;
+  const keptSet = new Set(kept);
+  c.messages.forEach(m => { if (!keptSet.has(m)) readTracker.forget(m.id); });
+  c.messages = kept;
+  persistMessages(c);
+  return true;
 }
 
 /* ==========================================================================
@@ -2317,6 +2369,15 @@ function cacheReadAll() {
 function cacheWriteAll(map) {
   try { localStorage.setItem(CACHE_KEY(), JSON.stringify(map)); } catch (e) { /* quota / private mode */ }
 }
+// Mirror of the account's cleared-ids ledger, so a reload paints WITHOUT the
+// messages another device already cleared (the server poll then confirms).
+const CLEARED_KEY = () => 'wh-cleared:' + meId();
+function clearedReadAll() {
+  try { return JSON.parse(localStorage.getItem(CLEARED_KEY())) || {}; } catch (e) { return {}; }
+}
+function clearedWrite(peerId, set) {
+  try { const m = clearedReadAll(); m[peerId] = Array.from(set).slice(-600); localStorage.setItem(CLEARED_KEY(), JSON.stringify(m)); } catch (e) { /* quota */ }
+}
 function persistMessages(c) {
   if (!c || !c.friendId) return;
   const map = cacheReadAll();
@@ -2334,8 +2395,10 @@ function persistMessages(c) {
 }
 function restoreMessages(peer) {
   const c = byId(peer.id); if (!c || c.messages.length) return;
+  const cl = clearedReadAll()[peer.id];
+  if (cl?.length && !c.clearedIds) c.clearedIds = new Set(cl);
   const slim = (cacheReadAll()[peer.id]) || null; if (!slim) return;
-  c.messages = slim.map(m => ({
+  c.messages = slim.filter(m => !c.clearedIds?.has(m.id)).map(m => ({
     id: m.id, from: m.from, text: m.text, t: new Date(m.t),
     status: m.status || 'delivered',
     recalled: !!m.recalled,
@@ -3654,10 +3717,11 @@ async function loadFriends() {
 
 async function loadHistory(peerId) {
   const c = byId(peerId);
+  if (!c) return false;
   // A clear is in flight: its round-trip will reconcile the list to the
   // server's visible set. Don't let a concurrent syncLoop poll re-add the old
-  // records we just hid (KV may not have applied the hiddenBy flag yet, so the
-  // poll's response can still carry them). reconcileAfterClear handles the trim.
+  // records we just hid (KV may not have applied the ledger yet, so the
+  // poll's response can still carry them). The clear handler applies the ledger itself.
   if (c._clearing) return false;
   // Merge, don't wipe: keep any messages already in memory (ones you just
   // sent, or that arrived live over P2P) and add only what the server has
@@ -3670,6 +3734,9 @@ async function loadHistory(peerId) {
     const r = await api(`/api/friends/history-get?uuid=${peerId}`);
     if (!r.ok || !r.data) return false;   // keep whatever is in memory
     keys.set(peerId, r.data.key);
+    // The account's cleared ledger: a clear made on ANOTHER device of this
+    // account shows up here -> drop our local copies (and keep them dropped).
+    const removed = applyCleared(c, r.data.cleared);
     const have = new Set(c.messages.map(x => x.id));
     // Also collect what I already hold, so I can UPGRADE ticks for messages
     // the peer has since read/delivered (durable half of the receipt fix):
@@ -3695,7 +3762,7 @@ async function loadHistory(peerId) {
         // never-viewed message count as read (bug A).
         status: m.from === meId() ? (m.peerRead ? 'read' : m.peerSeen ? 'delivered' : 'sent') : (m.mineRead ? 'read' : 'delivered'),
       }))
-      .filter(m => m.text || m.recalled);
+      .filter(m => (m.text || m.recalled) && !c.clearedIds?.has(m.id));
     // (0) Recalls and my own earlier reads, learned from the archive.
     incoming.forEach(m => {
       const lm = local.get(m.id); if (!lm) return;
@@ -3719,7 +3786,7 @@ async function loadHistory(peerId) {
         }
       }
     });
-    if (!fresh.length) return false;
+    if (!fresh.length) return removed;
     // Append the new ones and keep the whole thing in time order.
     c.messages = c.messages.concat(fresh).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1));
     persistMessages(c);   // keep the localStorage mirror in step
@@ -3916,6 +3983,7 @@ function receiveFromPeer(peerId, raw) {
   // A message without one still renders, but can't be acknowledged.
   const tagged = validTag(data.id);
   if (tagged && c.tomb?.has(data.id)) return;   // it was recalled before it even reached us
+  if (tagged && c.clearedIds?.has(data.id)) return;   // my account already cleared it (another device): stay hidden
   const m = {
     id: tagged ? data.id : wireId(),
     untracked: !tagged,
