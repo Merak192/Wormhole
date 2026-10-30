@@ -231,11 +231,9 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .indicator {
   position: absolute; left: 0; top: 0; width: 3px; height: 24px; border-radius: 0 3px 3px 0;
   background: var(--accent); opacity: 0;
-  /* transform/height are driven by placeIndicator() (Web Animations: the bar
-     stretches toward the new row with its leading edge first, then the tail
-     catches up), so only opacity is a CSS transition. */
-  transition: opacity var(--t-base) var(--ease);
-  will-change: transform, height;
+  /* The slide is the original CSS transition; the little stretch is added on top
+     by placeIndicator() through the independent `scale` property. */
+  transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
 }
 /* Empty conversation list: a little wormhole — rings pulling inward, a core, an orbiting spark */
 .es { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 34px 26px 22px; animation: fadeUp var(--t-slow) var(--ease) backwards; }
@@ -1437,31 +1435,27 @@ function listSkeleton() {
 const IND_H = 24;
 function placeIndicator(animate) {
   const row = convList.querySelector(`.conv[data-id="${state.active}"]`);
-  if (!row) { indicator.getAnimations().forEach(a => a.cancel()); indicator.style.opacity = 0; return; }
+  if (!row) { indicator.style.opacity = 0; return; }
   const y = row.offsetTop + (row.offsetHeight - IND_H) / 2;
   const wasHidden = indicator.style.opacity !== '1';
-  // Where the bar visually is RIGHT NOW (it may be mid-stretch): read the live
-  // computed values so an interrupted move continues from where the eye is.
-  const live = getComputedStyle(indicator);
-  const t0 = new DOMMatrix(live.transform).m42, h0 = parseFloat(live.height) || IND_H;
-  const run = indicator.getAnimations();
+  const from = new DOMMatrix(getComputedStyle(indicator).transform).m42;   // where it is right now
   indicator.style.opacity = 1;
-  const snap = () => { run.forEach(a => a.cancel()); indicator.style.transform = `translateY(${y}px)`; indicator.style.height = IND_H + 'px'; };
-  if (!animate || wasHidden || reduceMQ.matches || !indicator.animate || Math.abs(t0 - y) < 0.5 && Math.abs(h0 - IND_H) < 0.5) { snap(); return; }
-  // Liquid move. Keyframe 1: the leading edge races to the target while the tail
-  // stays put, so the bar stretches across the gap (and swells a touch);
-  // keyframe 2: the tail catches up and the bar settles back to its size.
-  const top = Math.min(t0, y), bottom = Math.max(t0 + h0, y + IND_H);
-  const dist = Math.abs(y - t0);
-  const dur = Math.round(380 + Math.min(dist, 360) * 0.35);
-  indicator.style.transform = `translateY(${y}px)`;       // committed end state
-  indicator.style.height = IND_H + 'px';
-  run.forEach(a => a.cancel());
-  indicator.animate([
-    { transform: `translateY(${t0}px)`,  height: h0 + 'px',            width: '3px', easing: 'cubic-bezier(0.55, 0, 0.15, 1)' },
-    { transform: `translateY(${top}px)`, height: (bottom - top) + 'px', width: '4px', offset: 0.42, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
-    { transform: `translateY(${y}px)`,   height: IND_H + 'px',          width: '3px' },
-  ], { duration: dur });
+  if (!animate || wasHidden || reduceMQ.matches) {            // first placement / re-render: no motion
+    indicator.style.transition = 'none';
+    indicator.style.transform = `translateY(${y}px)`;
+    void indicator.offsetHeight;                               // commit, then restore the CSS transition
+    indicator.style.transition = '';
+    return;
+  }
+  indicator.style.transform = `translateY(${y}px)`;            // the original slide (CSS transition)
+  const dist = Math.abs(y - from);
+  if (dist < 1 || !indicator.animate) return;
+  // A little stretch toward where it's going: the leading edge leads, then it relaxes.
+  const k = 1 + Math.min(0.55, 0.22 + dist / 700);              // ~1.25x for a neighbour, capped at 1.55x
+  const dur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-slow')) || 380;
+  indicator.getAnimations().forEach(a => { if (a instanceof CSSTransition === false) a.cancel(); });
+  indicator.style.transformOrigin = y > from ? 'top' : 'bottom';
+  indicator.animate([{ scale: '1 1' }, { scale: `1 ${k}`, offset: 0.4 }, { scale: '1 1' }], { duration: dur, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
 }
 function patchRow(c, { pulse = false } = {}) {
   const row = convList.querySelector(`.conv[data-id="${c.id}"]`); if (!row) return;
