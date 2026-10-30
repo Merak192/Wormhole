@@ -231,9 +231,9 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .indicator {
   position: absolute; left: 0; top: 0; width: 3px; height: 24px; border-radius: 0 3px 3px 0;
   background: var(--accent); opacity: 0;
-  /* The slide is the original CSS transition; the little stretch is added on top
-     by placeIndicator() through the independent `scale` property. */
-  transition: transform var(--t-slow) var(--ease), opacity var(--t-base) var(--ease);
+  /* position + stretch are driven by placeIndicator() (Web Animations), so only
+     opacity is a CSS transition. */
+  transition: opacity var(--t-base) var(--ease);
 }
 /* Empty conversation list: a little wormhole — rings pulling inward, a core, an orbiting spark */
 .es { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 34px 26px 22px; animation: fadeUp var(--t-slow) var(--ease) backwards; }
@@ -1433,29 +1433,37 @@ function listSkeleton() {
 }
 /* Active indicator: ONE element translated to the active row (shared-layout feel) */
 const IND_H = 24;
+let indTarget = null;                       // the y the bar is heading to / resting at
 function placeIndicator(animate) {
   const row = convList.querySelector(`.conv[data-id="${state.active}"]`);
-  if (!row) { indicator.style.opacity = 0; return; }
+  if (!row) { indicator.getAnimations().forEach(a => a.cancel()); indicator.style.opacity = 0; indTarget = null; return; }
   const y = row.offsetTop + (row.offsetHeight - IND_H) / 2;
+  const slide = () => indicator.getAnimations().filter(a => a.id === 'slide' || a.id === 'stretch');
+  const snap = () => { slide().forEach(a => a.cancel()); indicator.style.transform = `translateY(${y}px)`; indTarget = y; };
   const wasHidden = indicator.style.opacity !== '1';
-  const from = new DOMMatrix(getComputedStyle(indicator).transform).m42;   // where it is right now
   indicator.style.opacity = 1;
-  if (!animate || wasHidden || reduceMQ.matches) {            // first placement / re-render: no motion
-    indicator.style.transition = 'none';
-    indicator.style.transform = `translateY(${y}px)`;
-    void indicator.offsetHeight;                               // commit, then restore the CSS transition
-    indicator.style.transition = '';
-    return;
+  if (!animate) {
+    // A list re-render must not cut a slide short: if we're already heading to this y, leave it be.
+    if (slide().length && Math.abs(indTarget - y) < 0.5) return;
+    return snap();
   }
-  indicator.style.transform = `translateY(${y}px)`;            // the original slide (CSS transition)
+  if (wasHidden || reduceMQ.matches || !indicator.animate || indTarget === null) return snap();
+  // Start from where the bar is ON SCREEN right now (it may be mid-slide), not from the first row
+  // or the last resting spot.
+  const from = new DOMMatrix(getComputedStyle(indicator).transform).m42;
   const dist = Math.abs(y - from);
-  if (dist < 1 || !indicator.animate) return;
-  // A little stretch toward where it's going: the leading edge leads, then it relaxes.
-  const k = 1 + Math.min(0.55, 0.22 + dist / 700);              // ~1.25x for a neighbour, capped at 1.55x
-  const dur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-slow')) || 380;
-  indicator.getAnimations().forEach(a => { if (a instanceof CSSTransition === false) a.cancel(); });
+  if (dist < 1) return snap();
+  slide().forEach(a => a.cancel());
+  indicator.style.transform = `translateY(${y}px)`;      // committed end state
+  indTarget = y;
+  // Speed scales with distance: a neighbour ~340ms, three rows ~420ms, capped at 560ms.
+  const dur = Math.round(Math.min(560, 300 + dist * 0.6));
+  const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  indicator.animate([{ transform: `translateY(${from}px)` }, { transform: `translateY(${y}px)` }], { duration: dur, easing: ease }).id = 'slide';
+  // A little stretch toward where it's going, then it relaxes.
+  const k = 1 + Math.min(0.55, 0.22 + dist / 700);
   indicator.style.transformOrigin = y > from ? 'top' : 'bottom';
-  indicator.animate([{ scale: '1 1' }, { scale: `1 ${k}`, offset: 0.4 }, { scale: '1 1' }], { duration: dur, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' });
+  indicator.animate([{ scale: '1 1' }, { scale: `1 ${k}`, offset: 0.4 }, { scale: '1 1' }], { duration: dur, easing: ease }).id = 'stretch';
 }
 function patchRow(c, { pulse = false } = {}) {
   const row = convList.querySelector(`.conv[data-id="${c.id}"]`); if (!row) return;
