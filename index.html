@@ -237,6 +237,37 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   transition: opacity var(--t-base) var(--ease);
   will-change: transform, height;
 }
+/* Empty conversation list: a little wormhole — rings pulling inward, a core, an orbiting spark */
+.es { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 34px 26px 22px; animation: fadeUp var(--t-slow) var(--ease) backwards; }
+.es-art { width: 148px; height: 148px; color: var(--accent); overflow: visible; margin-bottom: 8px; }
+.es-ring { fill: none; stroke: currentColor; stroke-width: 1.4; transform-origin: 80px 80px; opacity: 0;
+  animation: esPull 5.4s cubic-bezier(0.3, 0.1, 0.6, 1) infinite; animation-delay: calc(var(--i) * -1.35s); }
+@keyframes esPull { 0% { transform: scale(1.18); opacity: 0; } 22% { opacity: 0.5; } 100% { transform: scale(0.18); opacity: 0; } }
+.es-halo { fill: url(#esGlow); animation: esBreathe 4.2s ease-in-out infinite; transform-origin: 80px 80px; }
+@keyframes esBreathe { 0%, 100% { transform: scale(0.92); opacity: 0.7; } 50% { transform: scale(1.08); opacity: 1; } }
+.es-core { fill: currentColor; }
+.es-orbit { transform-origin: 80px 80px; animation: esSpin 7s linear infinite; }
+.es-orbit circle { fill: currentColor; }
+@keyframes esSpin { to { transform: rotate(360deg); } }
+.es h2 { margin: 6px 0 6px; font-size: 16px; font-weight: 600; letter-spacing: -0.015em; color: var(--text); }
+.es p { margin: 0 0 18px; max-width: 232px; font-size: 13px; line-height: 1.5; color: var(--text-3); }
+.es-cta {
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 18px 0 14px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); font-size: 13.5px; font-weight: 500;
+  box-shadow: 0 6px 18px -8px var(--accent);
+  transition: transform 320ms var(--spring), box-shadow var(--t-base) var(--ease);
+}
+.es-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -8px var(--accent); }
+.es-cta:active { transform: scale(0.95); transition-duration: 80ms; }
+.es-id {
+  margin-top: 14px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  font-size: 12px; color: var(--text-3); background: var(--accent-soft);
+  transition: color var(--t-fast) var(--ease), transform 320ms var(--spring);
+}
+.es-id b { font-weight: 600; letter-spacing: 0.08em; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.es-id:hover { color: var(--text-2); }
+.es-id:active { transform: scale(0.96); transition-duration: 80ms; }
+@media (prefers-reduced-motion: reduce) { .es-ring, .es-halo, .es-orbit { animation: none; } .es-ring:first-child { opacity: 0.35; transform: scale(0.7); } }
 .empty-note { padding: 28px 24px; color: var(--text-3); font-size: 13px; text-align: center; }
 
 .conv {
@@ -579,12 +610,15 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(360px, 100%);
   padding-top: env(safe-area-inset-top, 0px);
   display: flex; flex-direction: column; min-height: 0; background: var(--surface);
-  border-left: 1px solid var(--line); box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg);
   transform: translateX(100%); visibility: hidden;
   transition: transform 460ms var(--drawer), visibility 0s linear 460ms;
 }
 .app[data-info="open"] .info { transform: none; visibility: visible; transition-delay: 0s; }
-.info-head { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 20px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+/* No boxed borders: a hairline that fades out toward the top and bottom edges */
+.info::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--line) 14%, var(--line) 86%, transparent); }
+.info-head { height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 20px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 .info-body { flex: 1; min-height: 0; padding: 24px 20px 28px; display: flex; flex-direction: column; gap: 26px; }
 /* Content staggers in (50ms steps) every time the panel opens or the contact changes */
 .info.play .stag { animation: fadeUp var(--t-slow) var(--ease) backwards; animation-delay: calc(var(--i, 0) * 50ms + 80ms); }
@@ -728,10 +762,19 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   .app[data-sidebar="closed"] .sidebar { display: none; }
   /* While sliding out, the panel is lifted out of the flow (the chat is already
      at its final width) and slid away with transform only — see slideDocked(). */
-  .sidebar.leaving { position: absolute; top: 0; bottom: 0; left: 0; z-index: 6; }
+  .sidebar.leaving { position: absolute; top: 0; bottom: 0; left: 0; z-index: 6; box-shadow: 18px 0 40px -18px rgba(0,0,0,0.22); }
   .btn-sb-collapse { display: grid; }
-  .btn-sb-open { display: none; }
-  .app[data-sidebar="closed"] .btn-sb-open { display: grid; }
+  /* The "show conversations" button never pops in or out: it grows from nothing
+     (width + opacity + scale) in step with the panel's slide. `sb-off` is set the
+     moment the slide starts (see setPanel), not when it ends. */
+  .btn-sb-open {
+    display: grid; overflow: hidden; width: 34px; margin-right: 0; opacity: 1; transform: none;
+    transition: width 520ms var(--drawer), margin 520ms var(--drawer), opacity 280ms var(--ease) 140ms, transform 520ms var(--drawer) 60ms, color var(--t-fast) var(--ease);
+  }
+  .app:not(.sb-off) .btn-sb-open {
+    width: 0; margin-right: -8px; opacity: 0; transform: translateX(-10px) scale(0.5); pointer-events: none;
+    transition: width 420ms var(--drawer), margin 420ms var(--drawer), opacity 160ms var(--ease), transform 420ms var(--drawer);
+  }
   .kbd { display: inline-block; }
   .messages { padding: 28px 32px 8px; }
   .composer { padding: 8px 24px 20px; }
@@ -742,7 +785,8 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 @media (min-width: 1100px) {
   .info { position: relative; inset: auto; width: 316px; flex: none; z-index: 2; padding-top: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
   .app[data-info="closed"] .info { display: none; }
-  .info.leaving { position: absolute; top: 0; bottom: 0; right: 0; z-index: 6; }
+  .info.leaving { position: absolute; top: 0; bottom: 0; right: 0; z-index: 6; box-shadow: -18px 0 40px -18px rgba(0,0,0,0.22); }
+  #btnInfoClose { display: none; }          /* docked: the header toggle already closes it */
   .scrim { display: none; }
 }
 @keyframes slideInR { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
@@ -1278,18 +1322,30 @@ function slideDocked(which, open, done) {
   const el = which === 'info' ? info : sidebar;
   const dir = which === 'info' ? 1 : -1;           // which way the panel leaves the screen
   const w = el.offsetWidth || (which === 'info' ? 316 : 320);
-  const opts = { duration: 480, easing: DRAWER_EASE };
+  const opts = { duration: 520, easing: DRAWER_EASE };
   el.dataset.moving = '1';
-  const end = () => { delete el.dataset.moving; el.getAnimations().forEach(a => a.cancel()); chat.style.willChange = ''; done && done(); };
+  const end = () => { delete el.dataset.moving; el.getAnimations({ subtree: true }).forEach(a => a.cancel()); chat.style.willChange = ''; done && done(); };
   chat.style.willChange = 'transform';
   let main;
   if (open) {
-    main = el.animate([{ transform: `translateX(${dir * 100}%)`, opacity: 0.4 }, { transform: 'none', opacity: 1 }], opts);
-    if (which === 'sidebar') chat.animate([{ transform: `translateX(${-w}px)` }, { transform: 'none' }], opts);
+    main = el.animate([{ transform: `translateX(${dir * 100}%)` }, { transform: 'none' }], opts);
+    if (which === 'sidebar') {
+      chat.animate([{ transform: `translateX(${-w}px)` }, { transform: 'none' }], opts);
+      // Parallax: the panel's own sections arrive a beat later and glide the last
+      // stretch, so the panel feels layered instead of one flat slab.
+      Array.from(el.children).forEach((k, i) => k.animate(
+        [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 560, delay: 70 + i * 45, easing: DRAWER_EASE, fill: 'backwards' }));
+    }
   } else {
     el.classList.add('leaving');                    // out of the flow: chat is at its final width now
-    main = el.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${dir * 100}%)`, opacity: 0.4 }], { ...opts, fill: 'forwards' });
-    if (which === 'sidebar') chat.animate([{ transform: `translateX(${w}px)` }, { transform: 'none' }], opts);
+    main = el.animate([{ transform: 'none' }, { transform: `translateX(${dir * 100}%)` }], { ...opts, duration: 460, fill: 'forwards' });
+    if (which === 'sidebar') {
+      chat.animate([{ transform: `translateX(${w}px)` }, { transform: 'none' }], { ...opts, duration: 460 });
+      Array.from(el.children).forEach((k, i) => k.animate(
+        [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(-22px)' }],
+        { duration: 300, delay: i * 25, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }));
+    }
   }
   main.finished.then(end, end);
 }
@@ -1305,6 +1361,7 @@ function setPanel(which, open) {
     if (animate) slideDocked(which, true);
     syncButtons();
   } else if (animate) {
+    if (which === 'sidebar') app.classList.add('sb-off');
     slideDocked(which, false, () => {
       app.dataset[which] = 'closed'; el.classList.remove('leaving'); syncButtons();
     });
@@ -1313,7 +1370,10 @@ function setPanel(which, open) {
   }
 }
 const togglePanel = w => setPanel(w, app.dataset[w] !== 'open');
-function syncButtons() { $('#btnInfo').setAttribute('aria-pressed', app.dataset.info === 'open'); }
+function syncButtons() {
+  $('#btnInfo').setAttribute('aria-pressed', app.dataset.info === 'open');
+  app.classList.toggle('sb-off', app.dataset.sidebar !== 'open');
+}
 function playInfo() { replay(info, 'play'); }
 
 $('#btnSbCollapse').addEventListener('click', () => setPanel('sidebar', false));
@@ -1339,9 +1399,35 @@ function rowHTML(c) {
 function renderList() {
   const q = state.q.trim().toLowerCase();
   const list = people.filter(c => !q || c.name.toLowerCase().includes(q) || lastPreview(c).toLowerCase().includes(q));
-  convList.innerHTML = list.length ? list.map(rowHTML).join('') : `<p class="empty-note">No conversations match “${esc(state.q)}”.</p>`;
+  convList.innerHTML = list.length ? list.map(rowHTML).join('')
+    : (!people.length && !q) ? emptyListHTML()
+    : `<p class="empty-note">No conversations match “${esc(state.q)}”.</p>`;
   placeIndicator(false);
 }
+function emptyListHTML() {
+  const id = meId();
+  return `<div class="es">
+    <svg class="es-art" viewBox="0 0 160 160" aria-hidden="true">
+      <defs><radialGradient id="esGlow"><stop offset="0" stop-color="currentColor" stop-opacity="0.34"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></radialGradient></defs>
+      <circle class="es-halo" cx="80" cy="80" r="62"/>
+      <circle class="es-ring" style="--i:0" cx="80" cy="80" r="62"/>
+      <circle class="es-ring" style="--i:1" cx="80" cy="80" r="62"/>
+      <circle class="es-ring" style="--i:2" cx="80" cy="80" r="62"/>
+      <circle class="es-ring" style="--i:3" cx="80" cy="80" r="62"/>
+      <circle class="es-core" cx="80" cy="80" r="5"/>
+      <g class="es-orbit"><circle cx="80" cy="22" r="3"/></g>
+    </svg>
+    <h2>No conversations yet</h2>
+    <p>Add a friend with their 8-digit ID to open a private, end-to-end encrypted wormhole.</p>
+    <button class="es-cta" data-es="add">${ic('plus', 16)}Add a friend</button>
+    ${id ? `<button class="es-id" data-es="copy" data-id="${esc(id)}" title="Copy your ID">Your ID <b>${esc(id.replace(/(\d{4})(?=\d)/, '$1 '))}</b></button>` : ''}
+  </div>`;
+}
+convList.addEventListener('click', e => {
+  if (e.target.closest('[data-es="add"]')) openAdd();
+  const cp = e.target.closest('[data-es="copy"]');
+  if (cp) copyText(cp.dataset.id);
+});
 function listSkeleton() {
   convList.innerHTML = Array.from({ length: 7 }, (_, i) =>
     `<div class="conv-sk"><div class="sk av-sk"></div><div class="sk-lines"><div class="sk" style="width:${46 + (i * 17) % 30}%;height:11px"></div><div class="sk" style="width:${62 + (i * 13) % 28}%;height:10px"></div></div></div>`).join('');
