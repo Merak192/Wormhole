@@ -16,6 +16,9 @@ A small, private messenger that runs entirely on **Cloudflare Pages + Workers KV
 
 ```
 index.html                    the whole front end (HTML + CSS + JS in one file)
+sw.js                         service worker: shows notifications on Android, handles taps
+manifest.webmanifest          app name/icons (lets phones install it as an app)
+icon-192.png, icon-512.png    app / notification icons
 _headers                      security headers / CSP
 package.json                  wrangler scripts
 wrangler.example.toml         optional: bindings as code
@@ -59,7 +62,11 @@ On first sign-in the app shows a small card asking to turn notifications on (bro
 - **Mute** (Info panel or the chat menu) is per account and stored in the browser (`wh-muted:<id>` in localStorage), so it survives reloads. A muted chat gets no notification, no row pulse and is left out of the tab-title count; its unread badge still counts.
 - A message that arrives both live (P2P) and from KV notifies once. Opening a chat for the first time in a session loads history silently.
 
-Limits: notifications work while the page is open, including as a background tab. There is no push server, so nothing arrives after the tab is closed. Some mobile browsers only allow notifications through a service worker and will stay silent.
+The **bell button** in the sidebar footer shows the state and is the way back if you dismissed the card: lit = on (tap to pause everything without touching browser settings), dim = paused / not asked yet / blocked (tapping explains how to unblock in the browser).
+
+**Android:** Chrome refuses `new Notification()` on phones, so all notifications go through the service worker (`sw.js`, served from the site root). Tapping one focuses the app and opens that chat. **iPhone:** only works for the app installed to the Home Screen (iOS 16.4+), via the manifest.
+
+Limits: notifications work while the page is open, including as a background tab. There is no push server (Web Push would need a server-side sender), so nothing arrives after the app is fully closed.
 
 ---
 

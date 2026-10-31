@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F3F3F1">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png" type="image/png">
 <title>Messages</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -756,6 +758,10 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+/* Notification status button (sidebar footer): lit = on, dim = paused / blocked / not asked yet */
+#btnNotif:not([data-s="on"]) { opacity: 0.5; }
+#btnNotif[data-s="on"] { color: var(--accent); }
+#btnNotif[data-s="on"]::before { background: var(--accent-soft); opacity: 1; }
 /* Notification permission prompt: a quiet card, never a modal */
 .notif-ask {
   position: fixed; left: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 45; width: min(340px, calc(100vw - 32px));
@@ -1022,6 +1028,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
       <button class="icon-btn hv theme-btn" id="btnTheme" aria-label="Toggle dark mode" aria-pressed="false">
         <span class="ic sun" data-ic="sun"></span><span class="ic moon" data-ic="moon"></span>
       </button>
+      <button class="icon-btn hv" id="btnNotif" aria-label="Notifications" aria-pressed="false" data-s="ask" data-ic="bell" hidden></button>
       <button class="icon-btn hv" id="btnLogout" aria-label="Sign out" title="Sign out" data-ic="logout"></button>
     </footer>
   </aside>
@@ -4184,11 +4191,50 @@ function updateTitle() {
   const n = people.reduce((sum, c) => sum + (c.muted ? 0 : (c.unread || 0)), 0);
   document.title = n ? `(${n > 99 ? '99+' : n}) ${BASE_TITLE}` : BASE_TITLE;
 }
-function closeNotesFor(peerId) { const n = liveNotes.get(peerId); if (n) { try { n.close(); } catch (e) {} liveNotes.delete(peerId); } }
+function closeNotesFor(peerId) {
+  const n = liveNotes.get(peerId); if (n) { try { n.close(); } catch (e) {} liveNotes.delete(peerId); }
+  if (swReg?.getNotifications) swReg.getNotifications({ tag: 'wh-' + peerId }).then(a => a.forEach(x => x.close())).catch(() => {});
+}
+
+/* Android Chrome only allows notifications through a service worker, so every
+   notification goes via the registration (works on desktop too); `new
+   Notification` is just the fallback if the worker isn't available. */
+let swReg = null;
+function registerWorker() {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+  navigator.serviceWorker.ready.then(r => { swReg = r; }).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {        // a tapped notification asks us to open its chat
+    if (e.data?.type === 'open-chat' && byId(e.data.peer)) openConversation(e.data.peer);
+  });
+}
+function openFromHash() {                                           // cold start from a tapped notification: /#chat=<id>
+  const m = /^#chat=(\d{8})$/.exec(location.hash); if (!m) return;
+  let tries = 0;
+  const t = setInterval(() => {
+    if (byId(m[1])) { clearInterval(t); setTimeout(() => openConversation(m[1]), 700); history.replaceState(null, '', location.pathname + location.search); }
+    else if (++tries > 25) clearInterval(t);
+  }, 400);
+}
+
+/* App-level switch (the bell in the sidebar footer): pause everything without touching the browser permission. */
+const NOTIF_OFF_KEY = 'wh-notif-off';
+const notifPaused = () => localStorage.getItem(NOTIF_OFF_KEY) === '1';
+function notifState() {
+  if (!notifSupported) return 'unsupported';
+  const p = Notification.permission;
+  return p === 'denied' ? 'blocked' : p === 'default' ? 'ask' : (notifPaused() ? 'paused' : 'on');
+}
+const TITLES = { on: 'Notifications on — tap to pause', paused: 'Notifications paused — tap to resume', ask: 'Turn on notifications', blocked: 'Notifications blocked in browser settings' };
+function syncNotifBtn() {
+  const b = $('#btnNotif'), st = notifState();
+  b.hidden = st === 'unsupported'; if (b.hidden) return;
+  b.dataset.s = st; b.setAttribute('aria-pressed', st === 'on'); b.title = TITLES[st]; b.setAttribute('aria-label', TITLES[st]);
+}
 
 function notifyIncoming(c, body, id) {
   if (!notifSupported || Notification.permission !== 'granted' || !c) return;
-  if (c.muted) return;                                           // mute = fully silent
+  if (c.muted || notifPaused()) return;                          // mute (per chat) / pause (all) = fully silent
   if (id) {
     if (notified.has(id)) return;
     notified.add(id); if (notified.size > 500) notified.delete(notified.values().next().value);
@@ -4196,13 +4242,17 @@ function notifyIncoming(c, body, id) {
   if (c.id === state.active && windowAttentive()) return;        // they're looking right at it
   let text = String(body == null ? '' : body).replace(/\s+/g, ' ').trim();
   if (text.length > 120) text = text.slice(0, 117) + '…';
-  try {
-    closeNotesFor(c.id);
-    const n = new Notification(c.name, { body: text || 'New message', tag: 'wh-' + c.id, renotify: true });
-    n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); openConversation(c.id); };
-    n.onclose = () => { if (liveNotes.get(c.id) === n) liveNotes.delete(c.id); };
-    liveNotes.set(c.id, n);
-  } catch (e) { /* some mobile browsers only allow notifications through a service worker */ }
+  const opts = { body: text || 'New message', tag: 'wh-' + c.id, renotify: true, icon: '/icon-192.png', data: { peer: c.id } };
+  const direct = () => {
+    try {
+      closeNotesFor(c.id);
+      const n = new Notification(c.name, opts);
+      n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); openConversation(c.id); };
+      n.onclose = () => { if (liveNotes.get(c.id) === n) liveNotes.delete(c.id); };
+      liveNotes.set(c.id, n);
+    } catch (e) { /* no way to show one on this browser */ }
+  };
+  if (swReg?.showNotification) swReg.showNotification(c.name, opts).catch(direct); else direct();
 }
 
 const askEl = $('#notifAsk');
@@ -4215,23 +4265,35 @@ function maybeAskNotifications() {
   setTimeout(() => { if (Notification.permission !== 'default') return; askEl.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => askEl.classList.add('show'))); }, 1800);
 }
 $('#notifLater').addEventListener('click', () => { try { localStorage.setItem(NOTIF_ASK_KEY, String(Date.now())); } catch (e) {} hideAsk(); });
-$('#notifOn').addEventListener('click', async () => {
-  hideAsk();
+async function askPermission() {
   let perm = 'default';
   try { perm = await Notification.requestPermission(); } catch (e) { /* ignore */ }
+  try { localStorage.removeItem(NOTIF_OFF_KEY); } catch (e) {}
   if (perm === 'granted') {
     toast('Notifications on');
-    try { new Notification('Notifications are on', { body: 'You’ll be alerted about new messages. Muted chats stay silent.', tag: 'wh-welcome' }); } catch (e) {}
-  } else if (perm === 'denied') toast('Notifications are blocked in your browser settings');
+    const opts = { body: 'You’ll be alerted about new messages. Muted chats stay silent.', tag: 'wh-welcome', icon: '/icon-192.png' };
+    try { if (swReg?.showNotification) await swReg.showNotification('Notifications are on', opts); else new Notification('Notifications are on', opts); } catch (e) {}
+  } else if (perm === 'denied') toast('Notifications are blocked in your browser settings', 3200);
+  syncNotifBtn();
+}
+$('#notifOn').addEventListener('click', () => { hideAsk(); askPermission(); });
+$('#btnNotif').addEventListener('click', () => {
+  const st = notifState();
+  if (st === 'ask') return askPermission();
+  if (st === 'blocked') return toast('Blocked. Tap the lock icon by the address bar → Permissions → Notifications → Allow.', 4500);
+  const off = st === 'on';
+  try { off ? localStorage.setItem(NOTIF_OFF_KEY, '1') : localStorage.removeItem(NOTIF_OFF_KEY); } catch (e) {}
+  if (off) [...liveNotes.keys()].forEach(closeNotesFor);
+  toast(off ? 'Notifications paused' : 'Notifications on'); syncNotifBtn();
 });
-window.addEventListener('focus', () => { if (state.active) closeNotesFor(state.active); });
+window.addEventListener('focus', () => { if (state.active) closeNotesFor(state.active); syncNotifBtn(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.active) closeNotesFor(state.active); });
 
 /* ==========================================================================
    TOAST
    ========================================================================== */
 let toastT;
-function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1800); }
+function toast(msg, ms = 1800) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), ms); }
 
 /* ==========================================================================
    KEYBOARD
@@ -4383,6 +4445,7 @@ function startApp() {
   // stays correct between P2P connect/disconnect).
   heartbeatLoop();
   syncLoop();
+  registerWorker(); syncNotifBtn(); openFromHash();
   maybeAskNotifications();
 }
 initAuth();
