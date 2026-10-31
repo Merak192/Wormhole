@@ -167,6 +167,12 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .icon-btn:active { transform: scale(0.94); transition-duration: 80ms; }
 .icon-btn[aria-pressed="true"] { color: var(--accent); }
 .icon-btn[aria-pressed="true"]::before { opacity: 1; background: var(--accent-soft); }
+/* Info-panel toggle: no filled "pressed" box — identical to the left panel button
+   (plain icon, soft hover tint only). */
+#btnInfo[aria-pressed="true"] { color: var(--text-2); }
+#btnInfo[aria-pressed="true"]:hover { color: var(--text); }
+#btnInfo[aria-pressed="true"]::before { background: var(--hover); opacity: 0; }
+#btnInfo[aria-pressed="true"]:hover::before { opacity: 1; }
 /* Theme toggle: same borderless, fill-less footprint as every other icon
    button. The two stacked sun/moon icons would otherwise read as a visible
    block, so drop the hover tint — it behaves exactly like #btnLogout etc. */
@@ -2360,13 +2366,12 @@ $('#modalConfirm').addEventListener('click', async () => {
     // leave the pane empty while the messages are still visible to this account.
     const friendId = c.friendId;
     const ids = c.messages.filter(m => validTag(m.id)).map(m => m.id).slice(-400);
-    if (!ids.length) { closeModal(); toast('Conversation cleared'); return; }
     c._clearing = true;                 // guard: syncLoop merges wait for this
     const res = await api('/api/friends/clear', { uuid: friendId, ids });
     c._clearing = false;
     if (res.ok) {
       applyCleared(c, ids.concat(res.data?.cleared || []));
-      closeModal(); patchRow(c); renderMessages(); toast('Conversation cleared');
+      closeModal(); patchRow(c); renderMessages(); refreshSharedFiles(friendId); toast('Conversation cleared');
     } else {
       closeModal(); toast('Could not clear conversation');
     }
@@ -2394,7 +2399,11 @@ function applyCleared(c, ids) {
   const kept = c.messages.filter(m => !set.has(m.id) || busy(m));
   if (kept.length === c.messages.length) return false;
   const keptSet = new Set(kept);
-  c.messages.forEach(m => { if (!keptSet.has(m)) readTracker.forget(m.id); });
+  c.messages.forEach(m => {
+    if (keptSet.has(m)) return;
+    readTracker.forget(m.id);
+    if (m.file?.fileId) idbDel(m.file.fileId).catch(() => {});   // the file's stored content goes with its history
+  });
   c.messages = kept;
   persistMessages(c);
   return true;
