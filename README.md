@@ -7,7 +7,8 @@ A small, private messenger that runs entirely on **Cloudflare Pages + Workers KV
 - **Live chat** — device-to-device over WebRTC (via [Trystero](https://github.com/dmotz/trystero), signalled through public Nostr relays).
 - **Persistent history** — every message is also saved to KV, AES-256-GCM encrypted, so a new device (or a reload) gets the conversation back.
 - **Files** — streamed peer-to-peer in encrypted 128 KB chunks. The receiver must accept each file. Only *metadata* is ever stored in KV.
-- **Receipts, recall, clear** — delivered / read ticks, 10-minute message recall, and a per-account "clear conversation".
+- **Receipts, recall, clear** — delivered / read ticks, 10-minute message recall, and a per-account "clear conversation" (messages **and** files).
+- **Notifications** — desktop notifications for new messages and incoming file requests, with per-chat mute (see below).
 
 ---
 
@@ -45,6 +46,20 @@ npm run deploy     # wrangler pages deploy .
 ```
 
 If you prefer bindings in code, rename `wrangler.example.toml` to `wrangler.toml` and fill in the namespace ids. Once that file exists the dashboard Bindings page becomes read-only.
+
+---
+
+## Notifications and mute
+
+On first sign-in the app shows a small card asking to turn notifications on (browsers require a click; "Not now" asks again after 7 days). Once allowed:
+
+- A new message or incoming file request shows a system notification with the sender's name and a short preview. There is one notification per chat, updated in place; clicking it opens that chat.
+- Nothing pops up for the chat you are looking at while the window is visible and focused.
+- The tab title shows the unread count, e.g. `(3) Messages`.
+- **Mute** (Info panel or the chat menu) is per account and stored in the browser (`wh-muted:<id>` in localStorage), so it survives reloads. A muted chat gets no notification, no row pulse and is left out of the tab-title count; its unread badge still counts.
+- A message that arrives both live (P2P) and from KV notifies once. Opening a chat for the first time in a session loads history silently.
+
+Limits: notifications work while the page is open, including as a background tab. There is no push server, so nothing arrives after the tab is closed. Some mobile browsers only allow notifications through a service worker and will stay silent.
 
 ---
 
@@ -130,7 +145,7 @@ Clearing belongs to the **account**:
 2. When B clears the same messages, their ids are now in **both** ledgers, and the server **deletes those records from `hist`** (whichever account clears second triggers the delete).
 3. Ledgers keep the ids after the records are gone, so a stale device can learn a message is gone and a late duplicate can't resurrect it.
 
-New messages after a clear show up normally. File **metadata** (`files:`) is not touched by clearing.
+**Files are cleared with the conversation.** Each file record is cleared under its chat-bubble id (`file-<fileId>`), so the "Shared files" list empties on every device of the account, the file's stored content in the browser (IndexedDB) is deleted, and the `files:` record is destroyed from KV once both accounts have cleared it. New messages and files after a clear show up normally.
 
 ### Concurrency & consistency
 
