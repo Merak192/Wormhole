@@ -98,12 +98,20 @@ export async function pushFileMeta(kv, a, b, meta) {
   return arr;
 }
 
-/** Read the pair's file-metadata list, filtered to records not hidden for me. */
+/**
+ * Read the pair's file-metadata list (oldest->newest), minus the files MY account
+ * has cleared. A file's id is its message id, so "Clear conversation" (which records
+ * message ids in the per-account ledger) hides the file from the Shared files list
+ * the same way it hides the message. The peer still sees it until they clear it too.
+ */
 export async function readFileMeta(kv, meId, peerId) {
-  const arr = (await kv.get(filesKey(meId, peerId), 'json')) || [];
-  // metadata is not per-user hidden (clear conversation doesn't touch it);
-  // return oldest->newest.
-  return arr;
+  const [arr, mine] = await Promise.all([
+    kv.get(filesKey(meId, peerId), 'json').then(v => v || []),
+    readCleared(kv, meId, peerId),
+  ]);
+  if (!mine.length) return arr;
+  const hidden = new Set(mine);
+  return arr.filter(f => !hidden.has(f.fileId));
 }
 
 /* ── crypto ────────────────────────────────────────────────────── */
@@ -343,6 +351,11 @@ export async function markHiddenForUser(kv, userId, peerId, ids) {
   const kept = arr.filter(m => !isPurged(m, userId, peerId, cleared));
   const purged = arr.length - kept.length;
   if (purged) await kv.put(key, JSON.stringify(kept), { expirationTtl: HISTORY_TTL });
+  // Same rule for the Shared files list: a file's metadata is destroyed once BOTH accounts cleared it.
+  const fkey = filesKey(userId, peerId);
+  const files = (await kv.get(fkey, 'json')) || [];
+  const keptFiles = files.filter(f => !(cleared[userId].has(f.fileId) && cleared[peerId].has(f.fileId)));
+  if (keptFiles.length !== files.length) await kv.put(fkey, JSON.stringify(keptFiles), { expirationTtl: HISTORY_TTL });
   return { cleared: ledger, added, purged };
 }
 

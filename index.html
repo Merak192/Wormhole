@@ -28,6 +28,21 @@
     if (ws.reduceMotion === true) de.dataset.motion = 'reduce';
   } catch (e) {}
 </script>
+<script src="i18n.js"></script>
+<script>
+  // Language: set <html lang> and dir before first paint (no left-to-right flash for Arabic).
+  try {
+    var cs = ['en', 'zh', 'fr', 'ru', 'es', 'ar'];
+    var wl = (JSON.parse(localStorage.getItem('wh-settings') || '{}') || {}).lang;
+    if (cs.indexOf(wl) < 0) {
+      wl = 'en';
+      var nl = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+      for (var i = 0; i < nl.length; i++) { var lc = String(nl[i]).toLowerCase().split('-')[0]; if (cs.indexOf(lc) >= 0) { wl = lc; break; } }
+    }
+    document.documentElement.lang = wl === 'zh' ? 'zh-CN' : wl;
+    document.documentElement.dir = wl === 'ar' ? 'rtl' : 'ltr';
+  } catch (e) {}
+</script>
 
 <style>
 /* ==========================================================================
@@ -284,7 +299,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 
 .conv {
   position: relative; isolation: isolate;
-  display: flex; align-items: center; gap: 12px; text-align: left;
+  display: flex; align-items: center; gap: 12px; text-align: start;
   width: calc(100% - 16px); height: 68px; margin: 0 8px; padding: 0 12px; border-radius: var(--r-lg);
   transition: transform var(--t-base) var(--ease);
 }
@@ -654,7 +669,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .kv small { font-size: calc(12px * var(--ts, 1)); color: var(--text-3); }
 .kv b { font-weight: 400; font-size: calc(13.5px * var(--ts, 1)); overflow-wrap: anywhere; }
 .files { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
-.file { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: var(--r-md); text-align: left; width: 100%; }
+.file { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: var(--r-md); text-align: start; width: 100%; }
 .file-ic { width: 36px; height: 36px; flex: none; border-radius: 9px; display: grid; place-items: center; background: var(--sunken); color: var(--text-2); font-size: calc(9.5px * var(--ts, 1)); font-weight: 600; letter-spacing: 0.02em; }
 .file-t { min-width: 0; line-height: 1.3; }
 .file-t b { display: block; font-size: calc(13.5px * var(--ts, 1)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -677,7 +692,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   transition: opacity var(--t-fast) var(--ease), transform var(--t-base) var(--ease), visibility 0s linear var(--t-base);
 }
 .menu.open { opacity: 1; transform: none; visibility: visible; pointer-events: auto; transition-delay: 0s; }
-.mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: calc(13.5px * var(--ts, 1)); text-align: left; }
+.mi { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: calc(13.5px * var(--ts, 1)); text-align: start; }
 .mi svg { color: var(--text-2); }
 .mi.danger, .mi.danger svg { color: var(--danger); }
 .msep { height: 1px; background: var(--line); margin: 6px 4px; }
@@ -710,7 +725,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .req-head { padding: 4px 20px 2px; font-size: calc(11.5px * var(--ts, 1)); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
 .req {
   position: relative; isolation: isolate;
-  display: flex; align-items: center; gap: 10px; text-align: left;
+  display: flex; align-items: center; gap: 10px; text-align: start;
   width: calc(100% - 16px); margin: 0 8px; padding: 8px 10px; border-radius: var(--r-lg);
   transition: transform var(--t-base) var(--ease);
 }
@@ -937,7 +952,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .set-tabs { display: flex; flex-direction: column; gap: 2px; }
 .set-tab {
   position: relative; isolation: isolate; display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px;
-  border-radius: var(--r-md); font-size: calc(13.5px * var(--ts, 1)); font-weight: 500; color: var(--text-2); text-align: left;
+  border-radius: var(--r-md); font-size: calc(13.5px * var(--ts, 1)); font-weight: 500; color: var(--text-2); text-align: start;
   transition: color var(--t-fast) var(--ease), transform var(--t-base) var(--ease);
 }
 /* Same card-on-sidebar treatment as the conversation rows */
@@ -950,7 +965,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .set-tab[aria-selected="true"]::before { opacity: 1; }
 .set-tab svg { flex: none; color: var(--text-3); transition: color var(--t-fast) var(--ease); }
 .set-tab[aria-selected="true"] svg { color: var(--accent); }
-.set-reset { margin-top: auto; height: 34px; padding: 0 10px; border-radius: var(--r-md); font-size: calc(12.5px * var(--ts, 1)); color: var(--text-3); text-align: left; }
+.set-reset { margin-top: auto; height: 34px; padding: 0 10px; border-radius: var(--r-md); font-size: calc(12.5px * var(--ts, 1)); color: var(--text-3); text-align: start; }
 .set-reset:hover { color: var(--text-2); }
 
 .set-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -1000,7 +1015,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 /* Choice cards (Encryption) — same surface/border/accent grammar as the rest */
 .opt-list { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 6px; }
 .opt {
-  position: relative; display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 14px 16px; text-align: left;
+  position: relative; display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 14px 16px; text-align: start;
   background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
   transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease), transform 320ms var(--spring), background var(--t-fast) var(--ease);
 }
@@ -1136,6 +1151,88 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
     transition-duration: 0.01ms !important; transition-delay: 0ms !important; scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   LANGUAGE — select control + right-to-left (Arabic).
+   dir="rtl" on <html> already reverses flex rows and grids (the sidebar moves to
+   the right, the info panel to the left); the rules below mirror everything that
+   is positioned or padded with a physical left/right.
+   ========================================================================== */
+.sel { position: relative; flex: none; display: inline-flex; align-items: center; }
+.sel select {
+  appearance: none; -webkit-appearance: none; height: 34px; min-width: 164px; padding: 0 34px 0 12px;
+  background: var(--sunken); color: var(--text); border: 1px solid transparent; border-radius: 12px;
+  font: inherit; font-size: calc(13px * var(--ts, 1)); font-weight: 500; cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.sel select:hover { border-color: var(--line-strong); }
+.sel select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sel::after {
+  content: ""; position: absolute; right: 13px; top: 50%; width: 6px; height: 6px; margin-top: -5px; pointer-events: none;
+  border-right: 1.6px solid var(--text-3); border-bottom: 1.6px solid var(--text-3); transform: rotate(45deg);
+}
+.sel option { background: var(--surface); color: var(--text); }
+:root[dir="rtl"] .sel select { padding: 0 12px 0 34px; }
+:root[dir="rtl"] .sel::after { right: auto; left: 13px; }
+
+:root[dir="rtl"] .dot { right: auto; left: -1px; }
+:root[dir="rtl"] .sidebar { transform: translateX(100%); }
+:root[dir="rtl"] .app[data-sidebar="open"] .sidebar { transform: none; }
+:root[dir="rtl"] .sb-head { padding: 20px 20px 12px 14px; }
+:root[dir="rtl"] .sb-foot { padding: 12px 16px 12px 14px; }
+:root[dir="rtl"] .indicator { left: auto; right: 0; border-radius: 3px 0 0 3px; }
+:root[dir="rtl"] .chat-head { padding: 0 14px 0 12px; }
+:root[dir="rtl"] .head-id { padding-left: 0; padding-right: 2px; }
+:root[dir="rtl"] .composer-box { padding: 6px 8px 6px 6px; }
+:root[dir="rtl"] .es-cta { padding: 0 14px 0 18px; }
+:root[dir="rtl"] .fdl, :root[dir="rtl"] .to-bottom { padding: 0 10px 0 12px; }
+:root[dir="rtl"] .self .bubble { border-bottom-right-radius: var(--r-lg); border-bottom-left-radius: 5px; }
+:root[dir="rtl"] .other .bubble { border-bottom-left-radius: var(--r-lg); border-bottom-right-radius: 5px; }
+:root[dir="rtl"] .meta { float: left; margin: 8px 12px -3px 0; }
+:root[dir="rtl"] .msg.self.enter { transform-origin: 0 100%; }
+:root[dir="rtl"] .msg.other.enter { transform-origin: 100% 100%; }
+:root[dir="rtl"] .msg.self .msg-actions { --ax: -6px; }
+:root[dir="rtl"] .msg.other .msg-actions { --ax: 6px; }
+:root[dir="rtl"] .tz { right: auto; left: 8px; }
+:root[dir="rtl"] .info { right: auto; left: 0; transform: translateX(-100%); }
+:root[dir="rtl"] .app[data-info="open"] .info { transform: none; }
+:root[dir="rtl"] .info::before { left: auto; right: 0; }
+:root[dir="rtl"] .info-head { padding: 0 20px 0 10px; }
+:root[dir="rtl"] .menu { transform-origin: top left; }
+:root[dir="rtl"] .csearch { margin-left: 0; margin-right: auto; padding: 0 12px 0 6px; transform-origin: top left; }
+:root[dir="rtl"] .req-wait::before { margin-right: 0; margin-left: 6px; }
+:root[dir="rtl"] .notif-ask { left: auto; right: 20px; }
+:root[dir="rtl"] .auth-theme { right: auto; left: 14px; }
+:root[dir="rtl"] .auth-pill { left: auto; right: 3px; }
+:root[dir="rtl"] .auth[data-mode="register"] .auth-pill { transform: translateX(-100%); }
+:root[dir="rtl"] .input-wrap input.has-reveal { padding-right: 12px; padding-left: 58px; }
+:root[dir="rtl"] .reveal { right: auto; left: 5px; }
+:root[dir="rtl"] .set-nav { border-right: 0; border-left: 1px solid var(--line); }
+:root[dir="rtl"] .set-close { right: auto; left: 14px; }
+:root[dir="rtl"] .set-title { padding-right: 0; padding-left: 40px; }
+:root[dir="rtl"] .switch i { left: auto; right: 3px; }
+:root[dir="rtl"] .switch[aria-checked="true"] i { transform: translateX(-16px); }
+:root[dir="rtl"] .seg-pill { left: auto; right: 3px; transform: translateX(calc(var(--i, 0) * -100%)); }
+@media (max-width: 1099px) {
+  :root[dir="rtl"] .info { transform: translateX(-100%); }
+  :root[dir="rtl"] .app[data-info="open"] .info { transform: none; }
+}
+@media (max-width: 760px) {
+  :root[dir="rtl"] .notif-ask { left: 16px; right: 16px; }
+  :root[dir="rtl"] .set-nav { border-left: 0; }
+  :root[dir="rtl"] .set-close { left: 10px; }
+}
+@media (min-width: 761px) {
+  :root[dir="rtl"] .sidebar { transform: none; border-right: 0; border-left: 1px solid var(--line); }
+  :root[dir="rtl"] .sidebar.leaving { left: auto; right: 0; box-shadow: -18px 0 40px -18px rgba(0,0,0,0.22); }
+  :root[dir="rtl"] .btn-sb-open { margin-right: 0; margin-left: 0; }
+  :root[dir="rtl"] .app:not(.sb-off) .btn-sb-open { margin-right: 0; margin-left: -8px; transform: translateX(10px) scale(0.5); }
+  :root[dir="rtl"] .csearch { right: auto; left: 16px; }
+}
+@media (min-width: 1100px) {
+  :root[dir="rtl"] .info { transform: none; }
+  :root[dir="rtl"] .info.leaving { right: auto; left: 0; box-shadow: 18px 0 40px -18px rgba(0,0,0,0.22); }
+}
 </style>
 </head>
 
@@ -1153,7 +1250,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
     </header>
     <label class="sb-search">
       <span data-ic="search" data-size="16"></span>
-      <input id="convSearch" type="search" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations">
+      <input id="convSearch" dir="auto" type="search" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations">
       <span class="kbd">Ctrl K</span>
     </label>
     <div class="sb-list scroll" id="convScroll">
@@ -1188,7 +1285,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 
     <div class="csearch" id="csearch" role="search">
       <span style="color:var(--text-3)" data-ic="search" data-size="16"></span>
-      <input id="csInput" type="text" placeholder="Search this conversation" autocomplete="off" aria-label="Search this conversation">
+      <input id="csInput" dir="auto" type="text" placeholder="Search this conversation" autocomplete="off" aria-label="Search this conversation">
       <span class="count" id="csCount"></span>
       <button class="icon-btn hv" id="csClose" aria-label="Close search" data-ic="close" data-size="16" style="width:30px;height:30px"></button>
     </div>
@@ -1202,7 +1299,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
       <div class="composer-box">
         <button class="attach" id="btnAttach" aria-label="Attach a file" title="Attach a file" data-ic="clip"></button>
         <input id="fileInput" type="file" multiple hidden>
-        <textarea id="input" rows="1" placeholder="Message" aria-label="Write a message"></textarea>
+        <textarea id="input" dir="auto" rows="1" placeholder="Message" aria-label="Write a message"></textarea>
         <button class="send" id="btnSend" aria-label="Send message" disabled data-ic="arrowUp" data-size="18"></button>
       </div>
     </div>
@@ -1405,9 +1502,10 @@ const SETTING_DEFAULTS = {
   timeFmt: 'auto',       // auto | 12 | 24
   readReceipts: true,
   typing: true,
+  lang: 'auto',          // auto (device language) | en | zh | fr | ru | es | ar
   encryption: 'A256GCM', // A256GCM (default, recommended) | A128GCM — how MY messages' cloud copy and MY files are encrypted
 };
-const SETTING_CHOICES = { textSize: ['sm', 'md', 'lg'], timeFmt: ['auto', '12', '24'], encryption: ['A256GCM', 'A128GCM'] };
+const SETTING_CHOICES = { textSize: ['sm', 'md', 'lg'], timeFmt: ['auto', '12', '24'], encryption: ['A256GCM', 'A128GCM'], lang: ['auto', 'en', 'zh', 'fr', 'ru', 'es', 'ar'] };
 function loadSettings() {
   const out = { ...SETTING_DEFAULTS };
   try {
@@ -1422,6 +1520,38 @@ function loadSettings() {
 const S = loadSettings();
 function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(S)); } catch (e) { /* quota / private mode */ } }
 const motionOff = () => reduceMQ.matches || S.reduceMotion;
+
+/* ==========================================================================
+   I18N — the six official UN languages: English, 中文, Français, Русский,
+   Español, العربية (right-to-left). English text is the key: tr('Some text')
+   returns the translation from i18n.js (window.WH_I18N) or the English itself
+   when there is none. {name}-style placeholders are filled from `vars`.
+   ========================================================================== */
+const LANGS = [
+  { code: 'en', name: 'English',      html: 'en',    locale: 'en',           dir: 'ltr' },
+  { code: 'zh', name: '中文（简体）',   html: 'zh-CN', locale: 'zh-CN',        dir: 'ltr' },
+  { code: 'fr', name: 'Français',     html: 'fr',    locale: 'fr',           dir: 'ltr' },
+  { code: 'ru', name: 'Русский',      html: 'ru',    locale: 'ru',           dir: 'ltr' },
+  { code: 'es', name: 'Español',      html: 'es',    locale: 'es',           dir: 'ltr' },
+  { code: 'ar', name: 'العربية',      html: 'ar',    locale: 'ar-u-nu-latn', dir: 'rtl' },   // Latin digits, like the 8-digit IDs
+];
+const DICT = window.WH_I18N || {};
+function detectLang() {
+  const list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+  for (const l of list) { const c = String(l).toLowerCase().split('-')[0]; if (LANGS.some(x => x.code === c)) return c; }
+  return 'en';
+}
+let LANG = S.lang === 'auto' ? detectLang() : S.lang;
+const langInfo = () => LANGS.find(l => l.code === LANG) || LANGS[0];
+const LOCALE = () => langInfo().locale;
+const rtl = () => langInfo().dir === 'rtl';
+const SG = () => rtl() ? -1 : 1;           // horizontal sign for slide animations
+function tr(key, vars) {
+  const d = DICT[LANG];
+  const s = d && d[key] !== undefined ? d[key] : key;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m) : s;
+}
+
 
 /* Retrigger a CSS animation class */
 function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
@@ -1465,17 +1595,17 @@ const tick = s => `<svg class="tick" data-s="${s}" width="16" height="11" viewBo
 const timeOpts = () => S.timeFmt === '12' ? { hour: 'numeric', minute: '2-digit', hour12: true }
                     : S.timeFmt === '24' ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
                     : { hour: 'numeric', minute: '2-digit' };
-const fmtTime = d => d.toLocaleTimeString([], timeOpts());
+const fmtTime = d => d.toLocaleTimeString(LOCALE(), timeOpts());
 const sameDay = (a, b) => a.toDateString() === b.toDateString();
 function dayLabel(d) {
-  const n = new Date(); if (sameDay(d, n)) return 'Today';
-  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+  const n = new Date(); if (sameDay(d, n)) return tr('Today');
+  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return tr('Yesterday');
+  return d.toLocaleDateString(LOCALE(), { weekday: 'long', month: 'short', day: 'numeric' });
 }
 function rowTime(d) {
   const n = new Date(); if (sameDay(d, n)) return fmtTime(d);
-  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const y = new Date(n); y.setDate(n.getDate() - 1); if (sameDay(d, y)) return tr('Yesterday');
+  return d.toLocaleDateString(LOCALE(), { month: 'short', day: 'numeric' });
 }
 
 /* ==========================================================================
@@ -1511,15 +1641,18 @@ const avatar = (c, s = 40, ring) =>
 
 const lastMsg = c => c.messages[c.messages.length - 1];
 function lastPreview(c) {
-  const m = lastMsg(c); if (!m) return 'No messages yet';
-  if (m.recalled) return m.from === 'me' ? 'You recalled a message' : 'Message recalled';
-  if (m.file) return (m.from === 'me' ? 'You: ' : '') + (m.file.name || 'File');
+  const m = lastMsg(c); if (!m) return tr('No messages yet');
+  if (m.recalled) return m.from === 'me' ? tr('You recalled a message') : tr('Message recalled');
+  const you = x => m.from === 'me' ? tr('You: {text}', { text: x }) : x;
+  if (m.file) return you(m.file.name || tr('File'));
   // Guard: m.text must be a string; a stray object would render as
   // "[object Object]" in the row.
-  const text = typeof m.text === 'string' ? m.text : '(unreadable message)';
-  return (m.from === 'me' ? 'You: ' : '') + text;
+  const text = typeof m.text === 'string' ? m.text : tr('(unreadable message)');
+  return you(text);
 }
-const statusText = c => c.typing ? 'typing…' : c.status === 'online' ? 'Online' : c.seen;
+/* Presence wording: c.seen holds the English 'Offline' marker; translate at display time. */
+const presenceLabel = c => c.status === 'offline' ? tr(c.seen || 'Offline') : c.status === 'online' ? tr('Online') : c.status;
+const statusText = c => c.typing ? tr('typing…') : c.status === 'online' ? tr('Online') : tr(c.seen);
 
 /* ==========================================================================
    THEME — 300ms colour cross-fade via a temporary .theming class
@@ -1549,7 +1682,7 @@ $$('.theme-btn').forEach(b => {
    Docked mode: 200ms exit (transform/opacity) -> column removed -> chat "settles".
    ========================================================================== */
 function settle(side) {
-  chat.style.setProperty('--sx', side === 'left' ? '-10px' : '10px');
+  chat.style.setProperty('--sx', (side === 'left' ? -10 : 10) * SG() + 'px');
   replay(chat, 'settle');
 }
 /* Docked panels slide with transform only (no width animation, so the chat
@@ -1562,7 +1695,7 @@ function settle(side) {
 const DRAWER_EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
 function slideDocked(which, open, done) {
   const el = which === 'info' ? info : sidebar;
-  const dir = which === 'info' ? 1 : -1;           // which way the panel leaves the screen
+  const dir = (which === 'info' ? 1 : -1) * SG();   // which way the panel leaves the screen (mirrored in RTL)
   const w = el.offsetWidth || (which === 'info' ? 316 : 320);
   const opts = { duration: 520, easing: DRAWER_EASE };
   el.dataset.moving = '1';
@@ -1572,20 +1705,20 @@ function slideDocked(which, open, done) {
   if (open) {
     main = el.animate([{ transform: `translateX(${dir * 100}%)` }, { transform: 'none' }], opts);
     if (which === 'sidebar') {
-      chat.animate([{ transform: `translateX(${-w}px)` }, { transform: 'none' }], opts);
+      chat.animate([{ transform: `translateX(${-w * SG()}px)` }, { transform: 'none' }], opts);
       // Parallax: the panel's own sections arrive a beat later and glide the last
       // stretch, so the panel feels layered instead of one flat slab.
       Array.from(el.children).forEach((k, i) => k.animate(
-        [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'none' }],
+        [{ opacity: 0, transform: `translateX(${-28 * SG()}px)` }, { opacity: 1, transform: 'none' }],
         { duration: 560, delay: 70 + i * 45, easing: DRAWER_EASE, fill: 'backwards' }));
     }
   } else {
     el.classList.add('leaving');                    // out of the flow: chat is at its final width now
     main = el.animate([{ transform: 'none' }, { transform: `translateX(${dir * 100}%)` }], { ...opts, duration: 460, fill: 'forwards' });
     if (which === 'sidebar') {
-      chat.animate([{ transform: `translateX(${w}px)` }, { transform: 'none' }], { ...opts, duration: 460 });
+      chat.animate([{ transform: `translateX(${w * SG()}px)` }, { transform: 'none' }], { ...opts, duration: 460 });
       Array.from(el.children).forEach((k, i) => k.animate(
-        [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(-22px)' }],
+        [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-22 * SG()}px)` }],
         { duration: 300, delay: i * 25, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }));
     }
   }
@@ -1643,7 +1776,7 @@ function renderList() {
   const list = people.filter(c => !q || c.name.toLowerCase().includes(q) || lastPreview(c).toLowerCase().includes(q));
   convList.innerHTML = list.length ? list.map(rowHTML).join('')
     : (!people.length && !q) ? emptyListHTML()
-    : `<p class="empty-note">No conversations match “${esc(state.q)}”.</p>`;
+    : `<p class="empty-note">${esc(tr('No conversations match “{q}”.', { q: state.q }))}</p>`;
   placeIndicator(false);
 }
 function emptyListHTML() {
@@ -1659,10 +1792,10 @@ function emptyListHTML() {
       <circle class="es-core" cx="80" cy="80" r="5"/>
       <g class="es-orbit"><circle cx="80" cy="22" r="3"/></g>
     </svg>
-    <h2>No conversations yet</h2>
-    <p>Add a friend with their 8-digit ID to open a private, end-to-end encrypted wormhole.</p>
-    <button class="es-cta" data-es="add">${ic('plus', 16)}Add a friend</button>
-    ${id ? `<button class="es-id" data-es="copy" data-id="${esc(id)}" title="Copy your ID">Your ID <b>${esc(id.replace(/(\d{4})(?=\d)/, '$1 '))}</b></button>` : ''}
+    <h2>${tr('No conversations yet')}</h2>
+    <p>${tr('Add a friend with their 8-digit ID to open a private, end-to-end encrypted wormhole.')}</p>
+    <button class="es-cta" data-es="add">${ic('plus', 16)}${tr('Add a friend')}</button>
+    ${id ? `<button class="es-id" data-es="copy" data-id="${esc(id)}" title="${esc(tr('Copy your ID'))}">${tr('Your ID')} <b>${esc(id.replace(/(\d{4})(?=\d)/, '$1 '))}</b></button>` : ''}
   </div>`;
 }
 convList.addEventListener('click', e => {
@@ -1700,14 +1833,16 @@ function placeIndicator(animate) {
   slide().forEach(a => a.cancel());
   indicator.style.transform = `translateY(${y}px)`;      // committed end state
   indTarget = y;
-  // Speed scales with distance: a neighbour ~340ms, three rows ~420ms, capped at 560ms.
-  const dur = Math.round(Math.min(560, 300 + dist * 0.6));
-  const ease = 'cubic-bezier(0.32, 0.72, 0, 1)';
+  // Speed scales with distance (a neighbour ~315ms, three rows ~425ms, capped at 520ms) and uses an
+  // ease-IN-out curve: it accelerates, cruises and settles. The old curve covered two thirds of the
+  // distance in the first 45ms and then crawled, which read as a jump followed by a drag.
+  const dur = Math.round(Math.min(520, 260 + dist * 0.8));
+  const ease = 'cubic-bezier(0.45, 0, 0.2, 1)';
   indicator.animate([{ transform: `translateY(${from}px)` }, { transform: `translateY(${y}px)` }], { duration: dur, easing: ease }).id = 'slide';
   // A little stretch toward where it's going, then it relaxes.
-  const k = 1 + Math.min(0.55, 0.22 + dist / 700);
+  const k = 1 + Math.min(0.22, 0.06 + dist / 1600);
   indicator.style.transformOrigin = y > from ? 'top' : 'bottom';
-  indicator.animate([{ scale: '1 1' }, { scale: `1 ${k}`, offset: 0.4 }, { scale: '1 1' }], { duration: dur, easing: ease }).id = 'stretch';
+  indicator.animate([{ scale: '1 1' }, { scale: `1 ${k}`, offset: 0.5 }, { scale: '1 1' }], { duration: dur, easing: 'ease-in-out' }).id = 'stretch';
 }
 function patchRow(c, { pulse = false } = {}) {
   updateTitle();
@@ -1740,7 +1875,7 @@ function updateStatus(force) {
   const txt = statusText(c);
   if (force || el.textContent !== txt) { el.textContent = txt; el.classList.toggle('is-typing', c.typing); if (!force) replay(el, 'flip'); }
 }
-function localTime(tz) { try { return new Date().toLocaleTimeString([], { ...timeOpts(), timeZone: tz }); } catch (e) { return ''; } }
+function localTime(tz) { try { return new Date().toLocaleTimeString(LOCALE(), { ...timeOpts(), timeZone: tz }); } catch (e) { return ''; } }
 /**
  * In-place value patch for the info panel. Used on every poll tick instead of
  * a full innerHTML rebuild (which caused the per-second flicker). Updates only
@@ -1757,12 +1892,11 @@ function patchInfoValues(c) {
   if (dot) dot.className = 'dot ' + c.status;
   const state = prof.querySelector('.state');
   if (state) {
-    const label = c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : c.status;
-    state.innerHTML = `<i class="${c.status}"></i>${esc(label)}`;
+    state.innerHTML = `<i class="${c.status}"></i>${esc(presenceLabel(c))}`;
   }
   // "Local time" (friend panel) — the local clock advances, so refresh the
   // value in place rather than leaving a stale time.
-  const lt = [...infoBody.querySelectorAll('small')].find(s => s.textContent === 'Local time');
+  const lt = infoBody.querySelector('small[data-k="local"]');
   if (lt) { const b = lt.closest('div')?.querySelector('b'); if (b) b.textContent = localTime(c.tz); }
 }
 function renderInfo(animate) {
@@ -1789,20 +1923,20 @@ function renderInfo(animate) {
     infoBody.innerHTML = `
       <section class="profile stag" style="--i:0">
         ${avatar(c, 64)}
-        <div><div class="name">${esc(c.name)}</div><div class="role">Friend</div>
-        <div class="state"><i class="${c.status}"></i>${esc(c.status === 'offline' ? c.seen : c.status === 'online' ? 'Online' : c.status)}</div></div>
+        <div><div class="name">${esc(c.name)}</div><div class="role">${tr('Friend')}</div>
+        <div class="state"><i class="${c.status}"></i>${esc(presenceLabel(c))}</div></div>
       </section>
       <section class="btn-row stag" style="--i:1">
-        <button class="btn hv" data-i="mute">${ic('bell', 15)}<span>${c.muted ? 'Unmute' : 'Mute'}</span></button>
-        <button class="btn hv" data-i="search">${ic('search', 15)}<span>Search chat</span></button>
+        <button class="btn hv" data-i="mute">${ic('bell', 15)}<span>${c.muted ? tr('Unmute') : tr('Mute')}</span></button>
+        <button class="btn hv" data-i="search">${ic('search', 15)}<span>${tr('Search chat')}</span></button>
       </section>
       <section class="stag" style="--i:2">
-        <div class="sec-title">Details</div>
-        <div class="kv"><div><small>UUID</small><b>${esc(c.id)}</b></div><div><small>Local time</small><b>${localTime(c.tz)}</b></div></div>
+        <div class="sec-title">${tr('Details')}</div>
+        <div class="kv"><div><small>UUID</small><b>${esc(c.id)}</b></div><div><small data-k="local">${tr('Local time')}</small><b>${localTime(c.tz)}</b></div></div>
       </section>
       <section class="stag" style="--i:3">
-        <div class="sec-title">Shared files <span id="filesCount">0</span></div>
-        <div class="files" id="filesList"><div class="files-empty">No shared files yet.</div></div>
+        <div class="sec-title">${tr('Shared files')} <span id="filesCount">0</span></div>
+        <div class="files" id="filesList"><div class="files-empty">${tr('No shared files yet.')}</div></div>
       </section>`;
     refreshSharedFiles(c.id);
   }
@@ -1816,7 +1950,7 @@ function renderInfo(animate) {
 function jumpToFile(fileId) {
   const c = cur(), m = c?.messages.find(x => x.file?.fileId === fileId);
   const row = m && thread && $$('.msg[data-mid]', thread).find(r => r.dataset.mid === m.id);
-  if (!row) { toast('That file isn’t in this conversation any more'); return; }
+  if (!row) { toast(tr('That file isn’t in this conversation any more')); return; }
   if (!mqInfo.matches) setPanel('info', false);
   setTimeout(() => {
     row.scrollIntoView({ block: 'center', behavior: reduce() ? 'auto' : 'smooth' });
@@ -1837,15 +1971,18 @@ async function refreshSharedFiles(peerId) {
   if (app.dataset.info !== 'open') return;
   const list = $('#filesList'), count = $('#filesCount');
   if (!list || peerId !== cur()?.id) return;
-  const files = await loadFileMeta(peerId);
+  // Only files that are still part of the chat: anything this account cleared stays out of the list
+  // (a file's id is its message id, so the cleared-ids ledger covers it).
+  const gone = cur().clearedIds;
+  const files = (await loadFileMeta(peerId)).filter(f => !(gone && gone.has(f.fileId)));
   const sorted = [...files].sort((a, b) => b.at - a.at);
   count.textContent = String(sorted.length);
-  if (!sorted.length) { list.innerHTML = '<div class="files-empty">No shared files yet.</div>'; return; }
+  if (!sorted.length) { list.innerHTML = `<div class="files-empty">${tr('No shared files yet.')}</div>`; return; }
   list.innerHTML = sorted.map(f => {
     const ext = extOf(f.name);
     return `<button class="file hv" data-sf="${esc(f.fileId)}">
       <span class="file-ic">${esc(ext)}</span>
-      <span class="file-t"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)} · ${f.status === 'sending' ? 'sending…' : f.status}</span></span>
+      <span class="file-t"><b>${esc(f.name)}</b><span>${fmtBytes(f.size)} · ${esc(tr(f.status === 'sending' ? 'sending…' : f.status))}</span></span>
     </button>`;
   }).join('');
 }
@@ -1866,8 +2003,8 @@ toBottom.addEventListener('click', () => scrollBottom(true));
 function bubbleHTML(m) {
   if (m.recalled) {
     // The author can take their text back into the composer (kept in memory only).
-    const edit = m.from === 'me' && m._orig ? `<button type="button" class="redit" data-act="reedit">Edit</button>` : '';
-    return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? 'You recalled a message' : 'Message recalled'}</span>${edit}</div>`;
+    const edit = m.from === 'me' && m._orig ? `<button type="button" class="redit" data-act="reedit">${tr('Edit')}</button>` : '';
+    return `<div class="bubble recalled"><span class="txt">${m.from === 'me' ? tr('You recalled a message') : tr('Message recalled')}</span>${edit}</div>`;
   }
   const meta = `<span class="meta"><time>${fmtTime(m.t)}</time>${m.from === 'me' ? tick(m.status) : ''}</span>`;
   // File attachments get their own bubble shape; text falls through to the
@@ -1875,8 +2012,8 @@ function bubbleHTML(m) {
   if (m.file) return fileBubbleHTML(m, meta);
   // The P2P wire sends {id, text, at}; a malformed payload could carry a
   // non-string text — never let an object render as "[object Object]".
-  const text = typeof m.text === 'string' && m.text ? m.text : '[unreadable message]';
-  return `<div class="bubble"><span class="txt">${esc(text)}</span>${meta}</div>`;
+  const text = typeof m.text === 'string' && m.text ? m.text : tr('[unreadable message]');
+  return `<div class="bubble"><span class="txt" dir="auto">${esc(text)}</span>${meta}</div>`;
 }
 /* Classify a MIME type / filename for bubble rendering. Returns one of
    'image' | 'video' | 'audio' | 'file'. Drives inline vs card display. */
@@ -1908,8 +2045,8 @@ const blobUrlOf = m => m.blobUrl || (m.blobUrl = URL.createObjectURL(m.blob));
 /* Status line under a progress bar. */
 function xferLabel(f) {
   const p = Math.round((f.progress || 0) * 100), size = fmtBytes(f.size);
-  if (!p) return [f.status === 'sending' ? 'Waiting for them to accept' : 'Starting', size].filter(Boolean).join(' · ');
-  return size ? `${p}% of ${size}` : `${p}%`;
+  if (!p) return [f.status === 'sending' ? tr('Waiting for them to accept') : tr('Starting'), size].filter(Boolean).join(' · ');
+  return size ? tr('{p}% of {size}', { p, size }) : `${p}%`;
 }
 /* File-attachment bubble. `m.file` = { name, type, size, fileId, status,
    progress }. Inline preview only when m.blob is present (receiver built it,
@@ -1924,7 +2061,7 @@ function fileBubbleHTML(m, meta) {
   // opened in the viewer.
   let body = '';
   if (m.blob) {
-    if (kind === 'image') body = `<button type="button" class="tw" data-zoom="${id}" title="${esc(f.name)}" aria-label="View ${esc(f.name)} full size"><img class="thumb" alt="${esc(f.name)}" decoding="async" draggable="false" src="${blobUrlOf(m)}"><span class="tz" aria-hidden="true">${ic('expand', 14)}</span></button>`;
+    if (kind === 'image') body = `<button type="button" class="tw" data-zoom="${id}" title="${esc(f.name)}" aria-label="${esc(tr('View {name} full size', { name: f.name }))}"><img class="thumb" alt="${esc(f.name)}" decoding="async" draggable="false" src="${blobUrlOf(m)}"><span class="tz" aria-hidden="true">${ic('expand', 14)}</span></button>`;
     else if (kind === 'video') body = `<video class="thumb" controls playsinline preload="metadata" src="${blobUrlOf(m)}"></video>`;
     else if (kind === 'audio') body = `<audio controls src="${blobUrlOf(m)}"></audio>`;
   }
@@ -1932,7 +2069,7 @@ function fileBubbleHTML(m, meta) {
   const status = f.status;
   const live = status === 'sending' || status === 'receiving';
   // Icon + name + type, shown whenever there is no inline preview.
-  const row = body ? '' : `<div class="frow"><span class="fic">${esc(ext)}</span><div class="finfo"><b>${esc(f.name)}</b><span>${ext === 'FILE' ? 'File' : esc(ext) + ' file'}</span></div></div>`;
+  const row = body ? '' : `<div class="frow"><span class="fic">${esc(ext)}</span><div class="finfo"><b>${esc(f.name)}</b><span>${ext === 'FILE' ? tr('File') : esc(tr('{ext} file', { ext }))}</span></div></div>`;
   // Live transfer -> progress bar; complete -> Download button with the file
   // size beside it; aborted / not stored here -> a quiet note.
   let action = '';
@@ -1940,17 +2077,17 @@ function fileBubbleHTML(m, meta) {
     const pct = Math.round((f.progress || 0) * 100);
     action = `<div class="fxfer"><div class="fprog${pct ? '' : ' wait'}"><i data-fprog="${id}" style="width:${pct}%"></i></div><span class="fpct">${esc(xferLabel(f))}</span></div>`;
   } else if (status === 'incomplete') {
-    action = `<span class="fincomplete">Transfer incomplete${size ? ' · ' + size : ''}</span>`;
+    action = `<span class="fincomplete">${tr('Transfer incomplete')}${size ? ' · ' + size : ''}</span>`;
   } else if (m.blob) {
-    action = `<div class="fact"><button type="button" class="fdl" data-fdl="${id}">${ic('down', 14)}<span>Download</span></button>${size ? `<span class="fsize">${size}</span>` : ''}</div>`;
+    action = `<div class="fact"><button type="button" class="fdl" data-fdl="${id}">${ic('down', 14)}<span>${tr('Download')}</span></button>${size ? `<span class="fsize">${size}</span>` : ''}</div>`;
   } else if (m.blobMissing) {
-    action = `<span class="fincomplete">Not stored on this device${size ? ' · ' + size : ''}</span>`;
+    action = `<span class="fincomplete">${tr('Not stored on this device')}${size ? ' · ' + size : ''}</span>`;
   }
   return `<div class="bubble fmsg k-${kind}"><div class="fbody">${body}${row}${action}</div>${meta}</div>`;
 }
 function actionsHTML(m) {
   if (m.recalled) return '';
-  return `<div class="msg-actions"><button class="hv" data-act="copy" aria-label="Copy message" title="Copy">${ic('copy', 15)}</button>${canRecall(m) ? `<button class="hv" data-act="recall" aria-label="Recall message" title="Recall">${ic('undo', 15)}</button>` : ''}</div>`;
+  return `<div class="msg-actions"><button class="hv" data-act="copy" aria-label="${tr('Copy message')}" title="${tr('Copy')}">${ic('copy', 15)}</button>${canRecall(m) ? `<button class="hv" data-act="recall" aria-label="${tr('Recall message')}" title="${tr('Recall')}">${ic('undo', 15)}</button>` : ''}</div>`;
 }
 function msgEl(m, { enter = false, delay = 0 } = {}) {
   const el = document.createElement('div');
@@ -1975,7 +2112,7 @@ function renderMessages() {
   const t = document.createElement('div'); t.className = 'thread fade-in';
   thread = t;
   if (!c || !c.messages.length) {
-    t.innerHTML = `<div class="empty"><b>No messages yet</b>${c ? 'Start the conversation with ' + esc(c.name.split(' ')[0]) + '.' : ''}</div>`;
+    t.innerHTML = `<div class="empty"><b>${tr('No messages yet')}</b>${c ? esc(tr('Start the conversation with {name}.', { name: c.name.split(' ')[0] })) : ''}</div>`;
   } else {
     let last = null;
     c.messages.forEach(m => { if (!last || !sameDay(last.t, m.t)) t.appendChild(dayEl(m.t)); t.appendChild(msgEl(m)); last = m; });
@@ -2151,7 +2288,7 @@ function showTypingRow() {
   if (!thread || $('.typing-row', thread)) return;
   const near = nearBottom();
   const el = document.createElement('div'); el.className = 'msg other enter typing-row';
-  el.innerHTML = '<div class="bubble" aria-label="Typing"><span class="dots"><i></i><i></i><i></i></span></div>';
+  el.innerHTML = `<div class="bubble" aria-label="${tr('Typing')}"><span class="dots"><i></i><i></i><i></i></span></div>`;
   thread.appendChild(el); if (near) requestAnimationFrame(() => scrollBottom(true));
 }
 function hideTypingRow(immediate) {
@@ -2185,7 +2322,7 @@ function openConversation(id, { initial = false } = {}) {
   // object is present so the rest of the flow (sendToFriend, loadHistory,
   // ensureP2P) doesn't silently no-op.
   if (!byId(id) && /^\d{8}$/.test(id)) {
-    addFriendToList({ id, username: 'User ' + id });
+    addFriendToList({ id, username: tr('User {id}', { id }) });
   }
   // Re-opening the SAME conversation: refresh the header, the info panel, and
   // (for friends) the history — don't just early-return and leave the message
@@ -2208,7 +2345,7 @@ function openConversation(id, { initial = false } = {}) {
   // openConversation is called before loadFriends resolves), fill it in now
   // so the rest of the flow works.
   if (!c && /^\d{8}$/.test(id)) {
-    addFriendToList({ id, username: 'User ' + id });
+    addFriendToList({ id, username: tr('User {id}', { id }) });
     c = cur();
   }
   // A friend re-opened after the user cleared the conversation on this
@@ -2221,7 +2358,7 @@ function openConversation(id, { initial = false } = {}) {
   placeIndicator(true);
   closeSearch(); hideMenu();
   renderHeader(); renderInfo(true);
-  input.value = c.draft || ''; input.placeholder = 'Message ' + c.name.split(' ')[0]; autosize();
+  input.value = c.draft || ''; input.placeholder = tr('Message {name}', { name: c.name.split(' ')[0] }); autosize();
   if (c?.friend) {
     // Paint from memory immediately (even when empty -> "No messages yet",
     // which is correct on a truly fresh conversation), then refresh the KV
@@ -2351,7 +2488,7 @@ messages.addEventListener('click', e => {
   }
 });
 function copyText(t, btn) {
-  const done = () => { toast('Copied'); morphCopyBtn(btn); };
+  const done = () => { toast(tr('Copied')); morphCopyBtn(btn); };
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
   function fallback() {
     const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
@@ -2478,7 +2615,7 @@ function recall(m, row) {
   const c = cur(); if (!c?.friend) return;
   if (!canRecall(m)) {
     const late = Date.now() - (+m.t) > RECALL_WINDOW_MS;
-    toast(late ? 'Too late to recall: messages can be recalled for 10 minutes.' : 'Wait for the transfer to finish first.');
+    toast(late ? tr('Too late to recall: messages can be recalled for 10 minutes.') : tr('Wait for the transfer to finish first.'));
     if (late) $('[data-act="recall"]', row)?.remove();
     return;
   }
@@ -2547,13 +2684,13 @@ function runSearch() {
   $$('.day', thread).forEach(d => d.classList.toggle('dim', !!q));
   hitIdx = hits.length ? hits.length - 1 : -1;      // start at the most recent match
   focusHit(); 
-  csCount.textContent = q ? (hits.length ? `${hitIdx + 1} of ${hits.length}` : 'No matches') : '';
+  csCount.textContent = q ? (hits.length ? tr('{i} of {n}', { i: hitIdx + 1, n: hits.length }) : tr('No matches')) : '';
 }
 function focusHit() {
   hits.forEach(h => h.classList.remove('current'));
   const h = hits[hitIdx]; if (!h) return;
   h.classList.add('current'); h.scrollIntoView({ block: 'center', behavior: reduce() ? 'auto' : 'smooth' });
-  csCount.textContent = `${hitIdx + 1} of ${hits.length}`;
+  csCount.textContent = tr('{i} of {n}', { i: hitIdx + 1, n: hits.length });
 }
 csInput.addEventListener('input', runSearch);
 csInput.addEventListener('keydown', e => {
@@ -2568,16 +2705,18 @@ $('#csClose').addEventListener('click', closeSearch);
 function buildMenu() {
   const c = cur();
   menu.innerHTML = `
-    <button class="mi hv" role="menuitem" data-m="info">${ic('info', 16)}<span>${app.dataset.info === 'open' ? 'Hide contact info' : 'Contact info'}</span></button>
-    <button class="mi hv" role="menuitem" data-m="mute">${ic('bell', 16)}<span>${c.muted ? 'Unmute notifications' : 'Mute notifications'}</span></button>
+    <button class="mi hv" role="menuitem" data-m="info">${ic('info', 16)}<span>${app.dataset.info === 'open' ? tr('Hide contact info') : tr('Contact info')}</span></button>
+    <button class="mi hv" role="menuitem" data-m="mute">${ic('bell', 16)}<span>${c.muted ? tr('Unmute notifications') : tr('Mute notifications')}</span></button>
     <div class="msep"></div>
-    <button class="mi hv danger" role="menuitem" data-m="clear">${ic('trash', 16)}<span>Clear conversation</span></button>`;
+    <button class="mi hv danger" role="menuitem" data-m="clear">${ic('trash', 16)}<span>${tr('Clear conversation')}</span></button>`;
 }
 function showMenu() {
   if (!cur()) return;
   buildMenu();
   const r = $('#btnMore').getBoundingClientRect();
-  menu.style.top = (r.bottom + 8) + 'px'; menu.style.right = Math.max(12, innerWidth - r.right) + 'px';
+  menu.style.top = (r.bottom + 8) + 'px';
+  if (rtl()) { menu.style.left = Math.max(12, r.left) + 'px'; menu.style.right = 'auto'; }     // the header actions sit on the left in RTL
+  else { menu.style.right = Math.max(12, innerWidth - r.right) + 'px'; menu.style.left = ''; }
   menu.classList.add('open'); $('#btnMore').setAttribute('aria-expanded', true);
 }
 function hideMenu() { menu.classList.remove('open'); $('#btnMore').setAttribute('aria-expanded', false); }
@@ -2599,8 +2738,8 @@ function saveMuted(c) {
 function toggleMute() {
   const c = cur(); if (!c) return; c.muted = !c.muted; saveMuted(c); updateTitle();
   if (c.muted) closeNotesFor(c.id);
-  toast(c.muted ? `Muted ${c.name.split(' ')[0]}` : `Unmuted ${c.name.split(' ')[0]}`);
-  const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = c.muted ? 'Unmute' : 'Mute';
+  toast(tr(c.muted ? 'Muted {name}' : 'Unmuted {name}', { name: c.name.split(' ')[0] }));
+  const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = c.muted ? tr('Unmute') : tr('Mute');
 }
 function openModal() { modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false'); setTimeout(() => $('#modalCancel').focus(), 50); }
 function closeModal() { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); }
@@ -2618,18 +2757,23 @@ $('#modalConfirm').addEventListener('click', async () => {
     // read-modify-write that races the 1s syncLoop, and a failed clear must not
     // leave the pane empty while the messages are still visible to this account.
     const friendId = c.friendId;
-    const ids = c.messages.filter(m => validTag(m.id)).map(m => m.id).slice(-400);
+    // The "Shared files" list is part of the history: clear those files too. (Files still mid-transfer
+    // keep their bubble, so they stay listed.)
+    const busyIds = new Set(c.messages.filter(m => m.file && ['sending', 'receiving'].includes(m.file.status)).map(m => m.id));
+    const fileIds = (await loadFileMeta(friendId)).map(f => f.fileId).filter(id => validTag(id) && !busyIds.has(id));
+    const ids = [...new Set([...c.messages.filter(m => validTag(m.id)).map(m => m.id), ...fileIds])].slice(-400);
     c._clearing = true;                 // guard: syncLoop merges wait for this
     const res = await api('/api/friends/clear', { uuid: friendId, ids });
     c._clearing = false;
     if (res.ok) {
       applyCleared(c, ids.concat(res.data?.cleared || []));
-      closeModal(); patchRow(c); renderMessages(); refreshSharedFiles(friendId); toast('Conversation cleared');
+      fileIds.forEach(id => idbDel(id).catch(() => {}));      // stored file content goes with the history
+      closeModal(); patchRow(c); renderMessages(); refreshSharedFiles(friendId); toast(tr('Conversation cleared'));
     } else {
-      closeModal(); toast('Could not clear conversation');
+      closeModal(); toast(tr('Could not clear conversation'));
     }
   } else {
-    c.messages = []; closeModal(); patchRow(c); renderMessages(); toast('Conversation cleared');
+    c.messages = []; closeModal(); patchRow(c); renderMessages(); toast(tr('Conversation cleared'));
   }
 });
 
@@ -2667,9 +2811,10 @@ function applyCleared(c, ids) {
    and a WebRTC P2P bridge (Trystero over public Nostr relays).
    ========================================================================== */
 const meId = () => {
-  // The signed-in user's 8-digit id. setMe() writes it as "ID 12345678".
-  const n = $('#meId').textContent || '';
-  return n.replace(/^ID\s*/, '').trim();
+  // The signed-in user's 8-digit id. setMe() keeps it in data-id because the visible
+  // label ("ID 12345678") is translated and must never be parsed back.
+  const el = $('#meId');
+  return el.dataset.id || (el.textContent.match(/\d{8}/) || [''])[0];
 };
 
 // Per-pair shared secret (AES-256 key, base64url), kept in memory for the
@@ -2909,7 +3054,7 @@ async function loadTrystero() {
   } catch (e) {
     trysteroFailed = true;
     console.warn('[wh] trystero failed to load; P2P disabled:', e?.message || e);
-    toast('P2P unavailable — messages will archive to cloud only.');
+    toast(tr('P2P unavailable — messages will archive to cloud only.'));
   }
   return trysteroModule;
 }
@@ -3375,7 +3520,7 @@ function handleFileOffer(peerId, offer) {
   } else {
     patchRow(byId(peerId), { pulse: !byId(peerId)?.muted });
   }
-  notifyIncoming(byId(peerId), `Wants to send you ${offer.name || 'a file'}`, 'offer-' + offer.offerId);
+  notifyIncoming(byId(peerId), tr('Wants to send you {file}', { file: offer.name || tr('a file') }), 'offer-' + offer.offerId);
 }
 
 /* Render every unanswered incoming-file offer as a row. Only shown when the
@@ -3398,11 +3543,11 @@ function renderPendingOffers() {
     row.innerHTML = `<div class="bubble fask">
       <div class="fask-top">
         <span class="fic">${esc(extOf(off.name))}</span>
-        <div class="finfo"><b>${esc(off.name)}</b><span>${[fmtBytes(off.size), 'wants to send you this'].filter(Boolean).join(' · ')}</span></div>
+        <div class="finfo"><b>${esc(off.name)}</b><span>${[fmtBytes(off.size), tr('wants to send you this')].filter(Boolean).join(' · ')}</span></div>
       </div>
       <div class="fask-acts">
-        <button class="fask-btn ok" data-fask="yes">${ic('check', 13)}<span>Accept</span></button>
-        <button class="fask-btn no" data-fask="no" aria-label="Decline">${ic('x', 13)}</button>
+        <button class="fask-btn ok" data-fask="yes">${ic('check', 13)}<span>${tr('Accept')}</span></button>
+        <button class="fask-btn no" data-fask="no" aria-label="${tr('Decline')}">${ic('x', 13)}</button>
       </div></div>`;
     thread.insertBefore(row, $('.typing-row', thread));
     added = true;
@@ -3515,7 +3660,7 @@ function flashDone(b) {
   const svg = $('svg', b), label = $('span', b);
   if (!svg || !label || b.classList.contains('done')) return;
   const was = label.textContent;
-  svg.innerHTML = ICONS.check; label.textContent = 'Downloaded'; b.classList.add('done');
+  svg.innerHTML = ICONS.check; label.textContent = tr('Downloaded'); b.classList.add('done');
   setTimeout(() => { svg.innerHTML = ICONS.down; label.textContent = was; b.classList.remove('done'); }, 1500);
 }
 messages.addEventListener('click', e => {
@@ -3538,7 +3683,7 @@ messages.addEventListener('load', e => {
 messages.addEventListener('error', e => {
   const im = e.target; if (!(im instanceof HTMLImageElement) || !im.classList.contains('thumb')) return;
   const w = im.closest('.tw'); if (!w) return;
-  w.outerHTML = `<div class="tw broken ready">${ic('info', 16)}<span>Preview unavailable. You can still download it.</span></div>`;
+  w.outerHTML = `<div class="tw broken ready">${ic('info', 16)}<span>${tr('Preview unavailable. You can still download it.')}</span></div>`;
 }, true);
 
 /* ==========================================================================
@@ -3627,14 +3772,14 @@ const viewer = (() => {
     const my = ++token, m = items[i];
     const d = await dims(m);
     if (my !== token) return false;
-    if (!d) { toast('Can’t preview this image'); return false; }
+    if (!d) { toast(tr('Can’t preview this image')); return false; }
     nw = d.w; nh = d.h; idx = i;
     img.src = blobUrlOf(m);
     try { await img.decode(); } catch { /* shown anyway */ }
     if (my !== token) return false;
     img.alt = m.file.name || 'Image';
-    nameEl.textContent = m.file.name || 'Image';
-    metaEl.textContent = [fmtBytes(m.file.size), `${nw}×${nh}`, items.length > 1 ? `${i + 1} of ${items.length}` : ''].filter(Boolean).join(' · ');
+    nameEl.textContent = m.file.name || tr('Image');
+    metaEl.textContent = [fmtBytes(m.file.size), `${nw}×${nh}`, items.length > 1 ? tr('{i} of {n}', { i: i + 1, n: items.length }) : ''].filter(Boolean).join(' · ');
     bPrev.hidden = i === 0; bNext.hidden = i === items.length - 1;
     s = 1; tx = ty = 0;
     if (mode === 'open') { el.classList.remove('closing'); el.classList.add('open'); el.setAttribute('aria-hidden', 'false'); if ('inert' in app) app.inert = true; }
@@ -3769,7 +3914,7 @@ const viewer = (() => {
   zoomBtn.addEventListener('click', () => { const [x, y] = centre(); zoomAt(x, y, Math.abs(s * fit - 1) < 0.02 ? 1 : 1 / fit, 'smooth'); });
   bPrev.addEventListener('click', () => go(-1));
   bNext.addEventListener('click', () => go(1));
-  bDl.addEventListener('click', () => { const m = items[idx]; if (m) { saveFile(m); toast('Download started'); } });
+  bDl.addEventListener('click', () => { const m = items[idx]; if (m) { saveFile(m); toast(tr('Download started')); } });
 
   document.addEventListener('keydown', e => {
     if (!isOpen || closing) return;
@@ -3806,7 +3951,7 @@ messages.addEventListener('click', e => {
 /* ---- attachment button ------------------------------------------------- */
 const fileInput = $('#fileInput');
 $('#btnAttach').addEventListener('click', () => {
-  const c = cur(); if (!c?.friend) { toast('Start a conversation first'); return; }
+  const c = cur(); if (!c?.friend) { toast(tr('Start a conversation first')); return; }
   fileInput.click();
 });
 fileInput.addEventListener('change', () => {
@@ -3821,7 +3966,7 @@ fileInput.addEventListener('change', () => {
 /* ---- drag & drop / paste to send ---------------------------------------- */
 function offerFiles(files) {
   const list = [...files]; if (!list.length) return;
-  const c = cur(); if (!c?.friend) { toast('Open a conversation first'); return; }
+  const c = cur(); if (!c?.friend) { toast(tr('Open a conversation first')); return; }
   list.forEach(f => offerFileToFriend(c, f));
 }
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
@@ -4201,14 +4346,14 @@ function renderRequests() {
     const isMine = reqs.mine.includes(q);
     const c = byId(q.uuid);
     const h = c ? c.h : (parseInt(q.uuid, 10) % 360);
-    const name = q.username || ('User ' + q.uuid);
+    const name = q.username || tr('User {id}', { id: q.uuid });
     const av = c ? avatar(c, 32) : `<span class="av" style="--s:32px;--h:${h}"><span>${esc(name.slice(0, 2).toUpperCase())}</span></span>`;
-    const meta = isMine ? 'Waiting for reply' : 'Wants to be friends';
+    const meta = isMine ? tr('Waiting for reply') : tr('Wants to be friends');
     const acts = isMine
-      ? `<span class="req-wait">Waiting</span>`
+      ? `<span class="req-wait">${tr('Waiting')}</span>`
       : `<div class="req-acts">
-           <button class="req-btn ok" data-act="accept" data-uuid="${q.uuid}">${ic('check', 14)}<span>Accept</span></button>
-           <button class="req-btn no" data-act="decline" data-uuid="${q.uuid}" aria-label="Decline">${ic('x', 14)}</button>
+           <button class="req-btn ok" data-act="accept" data-uuid="${q.uuid}">${ic('check', 14)}<span>${tr('Accept')}</span></button>
+           <button class="req-btn no" data-act="decline" data-uuid="${q.uuid}" aria-label="${tr('Decline')}">${ic('x', 14)}</button>
          </div>`;
     return `<div class="req req-in ${isMine ? 'waiting' : ''}" data-uuid="${q.uuid}" style="animation-delay:${i * 40}ms">
       ${av}
@@ -4262,29 +4407,29 @@ $('#addForm').addEventListener('submit', async e => {
   const uuid = $('#addUuid').value.trim();
   const field = $('#addField'), formErr = $('.form-err', $('#addForm'));
   const fail2 = msg => { field.classList.add('invalid'); $('.field-err', field).textContent = msg; formErr.classList.remove('show'); };
-  if (!/^\d{8}$/.test(uuid)) { fail2('Enter an 8-digit ID.'); return; }
+  if (!/^\d{8}$/.test(uuid)) { fail2(tr('Enter an 8-digit ID.')); return; }
   const me = meId();
-  if (uuid === me) { fail2("That's your own ID."); return; }
+  if (uuid === me) { fail2(tr("That's your own ID.")); return; }
   const btn = $('.auth-submit', $('#addForm'));
-  btn.disabled = true; btn.textContent = 'Sending…';
+  btn.disabled = true; btn.textContent = tr('Sending…');
   const r = await api('/api/friends/request', { uuid });
-  btn.disabled = false; btn.textContent = btn.dataset.label;
+  btn.disabled = false; btn.textContent = tr(btn.dataset.label);
   if (r.ok) {
-    closeAdd(); toast('Request sent');
+    closeAdd(); toast(tr('Request sent'));
     // It'll show up in their list; poll our own requests so the "you requested"
     // row appears here.
     loadFriends();
   } else {
     const er = r.data?.error;
     const msg = {
-      invalid_uuid: 'Enter a valid 8-digit ID.',
-      unknown_user: 'No account with that ID.',
-      already_friend: 'You are already friends.',
-      already_pending: 'You already sent a request.',
-      self: "That's your own ID.",
-      rate_limited: 'Too many requests. Wait a moment and try again.',
-      misconfigured: 'The server is missing the KV binding.',
-    }[er?.code] || 'Something went wrong.';
+      invalid_uuid: tr('Enter a valid 8-digit ID.'),
+      unknown_user: tr('No account with that ID.'),
+      already_friend: tr('You are already friends.'),
+      already_pending: tr('You already sent a request.'),
+      self: tr("That's your own ID."),
+      rate_limited: tr('Too many requests. Wait a moment and try again.'),
+      misconfigured: tr('The server is missing the KV binding.'),
+    }[er?.code] || tr('Something went wrong.');
     fail2(msg);
   }
 });
@@ -4347,7 +4492,7 @@ function receiveFromPeer(peerId, raw) {
   // so the message isn't dropped.
   let c = byId(peerId);
   if (!c && /^\d{8}$/.test(peerId)) {
-    addFriendToList({ id: peerId, username: 'User ' + peerId });
+    addFriendToList({ id: peerId, username: tr('User {id}', { id: peerId }) });
     c = byId(peerId);
   }
   if (!c) return;
@@ -4414,7 +4559,7 @@ const NOTIF_ASK_KEY = 'wh-notif-ask';
 const notifSupported = 'Notification' in window;
 const liveNotes = new Map();       // peerId -> Notification currently on screen
 const notified = new Set();        // ids already announced (P2P + KV copies of one message notify once)
-const BASE_TITLE = document.title;
+let BASE_TITLE = document.title;
 const windowAttentive = () => document.visibilityState === 'visible' && document.hasFocus();
 
 function updateTitle() {
@@ -4434,10 +4579,10 @@ function notifyIncoming(c, body, id) {
   if (c.id === state.active && windowAttentive()) return;        // they're looking right at it
   let text = String(body == null ? '' : body).replace(/\s+/g, ' ').trim();
   if (text.length > 120) text = text.slice(0, 117) + '…';
-  if (!S.preview) text = 'New message';
+  if (!S.preview) text = tr('New message');
   try {
     closeNotesFor(c.id);
-    const n = new Notification(c.name, { body: text || 'New message', tag: 'wh-' + c.id, renotify: true });
+    const n = new Notification(c.name, { body: text || tr('New message'), tag: 'wh-' + c.id, renotify: true });
     n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); openConversation(c.id); };
     n.onclose = () => { if (liveNotes.get(c.id) === n) liveNotes.delete(c.id); };
     liveNotes.set(c.id, n);
@@ -4459,9 +4604,9 @@ $('#notifOn').addEventListener('click', async () => {
   let perm = 'default';
   try { perm = await Notification.requestPermission(); } catch (e) { /* ignore */ }
   if (perm === 'granted') {
-    toast('Notifications on');
-    try { new Notification('Notifications are on', { body: 'You’ll be alerted about new messages. Muted chats stay silent.', tag: 'wh-welcome' }); } catch (e) {}
-  } else if (perm === 'denied') toast('Notifications are blocked in your browser settings');
+    toast(tr('Notifications on'));
+    try { new Notification(tr('Notifications are on'), { body: tr('You’ll be alerted about new messages. Muted chats stay silent.'), tag: 'wh-welcome' }); } catch (e) {}
+  } else if (perm === 'denied') toast(tr('Notifications are blocked in your browser settings'));
 });
 window.addEventListener('focus', () => { if (state.active) closeNotesFor(state.active); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.active) closeNotesFor(state.active); });
@@ -4473,7 +4618,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
    ========================================================================== */
 const setLayer = $('#settings'), setTabs = $('#setTabs'), setBody = $('#setBody');
 const isApple = /Mac|iPhone|iPad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
-const SET_SECTIONS = [
+const SET_SECTIONS = [   // English source text; translated with tr() wherever it is shown
   { id: 'appearance',    label: 'Appearance',    icon: 'palette', title: 'Appearance',    sub: 'How Wormhole looks on this device.' },
   { id: 'notifications', label: 'Notifications', icon: 'bell',    title: 'Notifications', sub: 'Alerts for new messages and incoming files.' },
   { id: 'messages',      label: 'Messages',      icon: 'message', title: 'Messages',      sub: 'Writing, time and what others can see.' },
@@ -4488,49 +4633,52 @@ const uiOpts = (key, opts, label) => `<div class="opt-list" role="radiogroup" ar
   opts.map(([v, name, tag, desc]) => `<button type="button" class="opt" role="radio" aria-checked="false" data-v="${v}"><span class="opt-dot"></span><span class="opt-txt"><b>${name}${tag ? `<em>${tag}</em>` : ''}</b><span>${desc}</span></span></button>`).join('')}</div>`;
 const uiRow = (label, desc, ctl, attrs = '') => `<div class="set-row" ${attrs}><div class="set-label"><b>${label}</b><span>${desc}</span></div>${ctl}</div>`;
 
+const uiSelect = (key, opts, label) => `<span class="sel"><select data-set="${key}" aria-label="${esc(label)}">${
+  opts.map(([v, text, lang]) => `<option value="${v}"${lang ? ` lang="${lang}"` : ''}>${esc(text)}</option>`).join('')}</select></span>`;
+
 const SET_VIEWS = {
   appearance: () => `
     <div class="set-preview" aria-hidden="true">
-      <div class="msg other"><div class="bubble"><span class="txt">Are we still on for tonight?</span></div></div>
-      <div class="msg self gap"><div class="bubble"><span class="txt">Yes — see you at eight.</span></div></div>
+      <div class="msg other"><div class="bubble"><span class="txt" dir="auto">${tr('Are we still on for tonight?')}</span></div></div>
+      <div class="msg self gap"><div class="bubble"><span class="txt" dir="auto">${tr('Yes — see you at eight.')}</span></div></div>
     </div>
-    ${uiRow('Theme', 'Light, dark, or match your device.', uiSeg('theme', [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']], 'Theme'))}
-    ${uiRow('Text size', 'Scales text across the whole app.', uiSeg('textSize', [['sm', 'Small'], ['md', 'Default'], ['lg', 'Large']], 'Text size'))}
-    ${uiRow('Compact messages', 'Tighter spacing between messages.', uiSwitch('compact'))}
-    ${uiRow('Reduce motion', 'Fewer sliding and fading effects.', uiSwitch('reduceMotion'))}`,
+    ${uiRow(tr('Theme'), tr('Light, dark, or match your device.'), uiSeg('theme', [['light', tr('Light')], ['dark', tr('Dark')], ['system', tr('System')]], tr('Theme')))}
+    ${uiRow(tr('Language'), tr('Choose the language of the whole app.'), uiSelect('lang', [['auto', tr('Auto (device language)')], ...LANGS.map(l => [l.code, l.name, l.html])], tr('Language')))}
+    ${uiRow(tr('Text size'), tr('Scales text across the whole app.'), uiSeg('textSize', [['sm', tr('Small')], ['md', tr('Default')], ['lg', tr('Large')]], tr('Text size')))}
+    ${uiRow(tr('Compact messages'), tr('Tighter spacing between messages.'), uiSwitch('compact'))}
+    ${uiRow(tr('Reduce motion'), tr('Fewer sliding and fading effects.'), uiSwitch('reduceMotion'))}`,
   notifications: () => `
-    ${uiRow('Desktop notifications', '<span id="notifHint" style="margin:0"></span>', uiSwitch('notify'))}
-    ${uiRow('Show message preview', 'Off: alerts only say “New message”.', uiSwitch('preview'), 'data-needs-notify')}
-    ${uiRow('Send a test alert', 'Check how a notification looks.', '<button type="button" class="btn hv" id="setTest">Send test</button>', 'data-needs-notify')}
-    ${uiRow('Unread count in tab title', 'Shows “(3) Messages” while you’re away.', uiSwitch('titleCount'))}
-    <div class="set-group">Muted chats</div>
+    ${uiRow(tr('Desktop notifications'), '<span id="notifHint" style="margin:0"></span>', uiSwitch('notify'))}
+    ${uiRow(tr('Show message preview'), tr('Off: alerts only say “New message”.'), uiSwitch('preview'), 'data-needs-notify')}
+    ${uiRow(tr('Send a test alert'), tr('Check how a notification looks.'), `<button type="button" class="btn hv" id="setTest">${tr('Send test')}</button>`, 'data-needs-notify')}
+    ${uiRow(tr('Unread count in tab title'), tr('Shows “(3) Messages” while you’re away.'), uiSwitch('titleCount'))}
+    <div class="set-group">${tr('Muted chats')}</div>
     <div id="mutedList"></div>`,
   messages: () => `
-    ${uiRow('Enter sends message', isApple ? 'Off: press ⌘ Enter to send; Enter adds a new line.' : 'Off: press Ctrl Enter to send; Enter adds a new line.', uiSwitch('enterSend'))}
-    ${uiRow('Time format', 'Used in chats and the conversation list.', uiSeg('timeFmt', [['auto', 'Auto'], ['12', '12-hour'], ['24', '24-hour']], 'Time format'))}
-    <div class="set-group">Privacy</div>
-    ${uiRow('Read receipts', 'Off: people see your replies as delivered, never as read.', uiSwitch('readReceipts'))}
-    ${uiRow('Typing indicator', 'Let people see when you’re writing to them.', uiSwitch('typing'))}`,
+    ${uiRow(tr('Enter sends message'), tr(isApple ? 'Off: press ⌘ Enter to send; Enter adds a new line.' : 'Off: press Ctrl Enter to send; Enter adds a new line.'), uiSwitch('enterSend'))}
+    ${uiRow(tr('Time format'), tr('Used in chats and the conversation list.'), uiSeg('timeFmt', [['auto', tr('Auto')], ['12', tr('12-hour')], ['24', tr('24-hour')]], tr('Time format')))}
+    <div class="set-group">${tr('Privacy')}</div>
+    ${uiRow(tr('Read receipts'), tr('Off: people see your replies as delivered, never as read.'), uiSwitch('readReceipts'))}
+    ${uiRow(tr('Typing indicator'), tr('Let people see when you’re writing to them.'), uiSwitch('typing'))}`,
 };
-
 SET_VIEWS.encryption = () => `
     ${uiOpts('encryption', [
-      ['A256GCM', 'AES-256', 'Default · Recommended', '256-bit key. The strongest option and the largest safety margin. Fast on any modern device.'],
-      ['A128GCM', 'AES-128', '', '128-bit key. Still considered secure and slightly lighter on very old hardware.'],
-    ], 'Encryption method')}
-    <div class="set-group">What this covers</div>
-    ${uiRow('Saved message history', 'The encrypted copy of your new messages kept in the cloud so other devices can restore them.', '<span class="set-chip">Applies</span>')}
-    ${uiRow('Files you send', 'Every chunk of a file you send is encrypted with the chosen method.', '<span class="set-chip">Applies</span>')}
-    ${uiRow('Live chat', 'Delivered device to device over WebRTC, which has its own built-in encryption.', '<span class="set-chip dim">Not affected</span>')}
-    ${uiRow('Earlier messages', 'Each message keeps the method it was sent with. Changing this never locks you out of old ones, and people can always read what you send.', '<span class="set-chip dim">Unchanged</span>')}`;
+      ['A256GCM', 'AES-256', tr('Default · Recommended'), tr('256-bit key. The strongest option and the largest safety margin. Fast on any modern device.')],
+      ['A128GCM', 'AES-128', '', tr('128-bit key. Still considered secure and slightly lighter on very old hardware.')],
+    ], tr('Encryption method'))}
+    <div class="set-group">${tr('What this covers')}</div>
+    ${uiRow(tr('Saved message history'), tr('The encrypted copy of your new messages kept in the cloud so other devices can restore them.'), `<span class="set-chip">${tr('Applies')}</span>`)}
+    ${uiRow(tr('Files you send'), tr('Every chunk of a file you send is encrypted with the chosen method.'), `<span class="set-chip">${tr('Applies')}</span>`)}
+    ${uiRow(tr('Live chat'), tr('Delivered device to device over WebRTC, which has its own built-in encryption.'), `<span class="set-chip dim">${tr('Not affected')}</span>`)}
+    ${uiRow(tr('Earlier messages'), tr('Each message keeps the method it was sent with. Changing this never locks you out of old ones, and people can always read what you send.'), `<span class="set-chip dim">${tr('Unchanged')}</span>`)}`;
 
 const notifyOn = () => notifSupported && Notification.permission === 'granted' && S.notify;
 function notifHint() {
-  if (!notifSupported) return 'This browser doesn’t support notifications.';
-  if (!window.isSecureContext) return 'Notifications need a secure (https) connection.';
-  if (Notification.permission === 'denied') return 'Blocked in your browser’s site settings. Allow them there, then come back.';
-  if (Notification.permission === 'default') return 'Turn on to let your browser ask for permission.';
-  return S.notify ? 'On while this tab is open. Muted chats stay silent.' : 'Paused. You won’t be alerted until you turn this back on.';
+  if (!notifSupported) return tr('This browser doesn’t support notifications.');
+  if (!window.isSecureContext) return tr('Notifications need a secure (https) connection.');
+  if (Notification.permission === 'denied') return tr('Blocked in your browser’s site settings. Allow them there, then come back.');
+  if (Notification.permission === 'default') return tr('Turn on to let your browser ask for permission.');
+  return S.notify ? tr('On while this tab is open. Muted chats stay silent.') : tr('Paused. You won’t be alerted until you turn this back on.');
 }
 
 function applySettings() {
@@ -4543,6 +4691,7 @@ function syncControls() {
   $$('[data-set]', setBody).forEach(el => {
     const k = el.dataset.set;
     if (el.classList.contains('switch')) el.setAttribute('aria-checked', String(k === 'notify' ? notifyOn() : !!S[k]));
+    else if (el.tagName === 'SELECT') el.value = S[k];
     else if (el.classList.contains('opt-list')) {
       const btns = $$('[role="radio"]', el);
       btns.forEach(b => b.setAttribute('aria-checked', String(b.dataset.v === S[k])));
@@ -4561,17 +4710,17 @@ function renderMuted() {
   const box = $('#mutedList'); if (!box) return;
   const ids = [...mutedSet()];
   box.innerHTML = ids.length ? ids.map(id => {
-    const c = byId(id), name = c ? c.name : 'ID ' + id;
-    return `<div class="mu-row"><span class="av" style="--s:30px;--h:${c ? c.h : 200}"><span>${c ? esc(initials(c.name)) : '?'}</span></span><b>${esc(name)}</b><button type="button" class="btn hv" data-unmute="${esc(id)}">Unmute</button></div>`;
-  }).join('') : '<div class="files-empty">No muted chats. Mute one from its ⋯ menu.</div>';
+    const c = byId(id), name = c ? c.name : tr('ID {id}', { id });
+    return `<div class="mu-row"><span class="av" style="--s:30px;--h:${c ? c.h : 200}"><span>${c ? esc(initials(c.name)) : '?'}</span></span><b>${esc(name)}</b><button type="button" class="btn hv" data-unmute="${esc(id)}">${tr('Unmute')}</button></div>`;
+  }).join('') : `<div class="files-empty">${tr('No muted chats. Mute one from its ⋯ menu.')}</div>`;
 }
 function unmuteId(id) {
   const c = byId(id);
   if (c) { c.muted = false; saveMuted(c); }
   else { const set = mutedSet(); set.delete(id); try { localStorage.setItem(MUTE_KEY(), JSON.stringify([...set])); } catch (e) {} }
   updateTitle(); renderMuted();
-  if (c && c.id === state.active) { const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = 'Mute'; }
-  toast(c ? `Unmuted ${c.name.split(' ')[0]}` : 'Unmuted');
+  if (c && c.id === state.active) { const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = tr('Mute'); }
+  toast(c ? tr('Unmuted {name}', { name: c.name.split(' ')[0] }) : tr('Unmuted'));
 }
 /* Clock format changed: patch the visible times in place (no re-render, no scroll jump) */
 function refreshTimes() {
@@ -4588,13 +4737,16 @@ function showSection(id, first) {
   setSection = sec.id;
   $$('.set-tab', setTabs).forEach(t => { const on = t.dataset.id === sec.id; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
   setBody.setAttribute('aria-labelledby', 'tab-' + sec.id);
-  setBody.innerHTML = `<h3 class="set-title">${sec.title}</h3><p class="set-sub">${sec.sub}</p>${SET_VIEWS[sec.id]()}`;
+  setBody.innerHTML = `<h3 class="set-title">${tr(sec.title)}</h3><p class="set-sub">${tr(sec.sub)}</p>${SET_VIEWS[sec.id]()}`;
   setBody.scrollTop = 0;
   [...setBody.children].forEach((el, i) => el.style.setProperty('--i', i));   // every block staggers, top to bottom
   if (!motionOff()) replay(setBody, 'play'); else setBody.classList.remove('play');
   syncControls(); renderMuted();
 }
-setTabs.innerHTML = SET_SECTIONS.map(s => `<button type="button" class="set-tab" role="tab" id="tab-${s.id}" data-id="${s.id}" aria-selected="false">${ic(s.icon, 18)}<span>${s.label}</span></button>`).join('');
+function buildSetTabs() {
+  setTabs.innerHTML = SET_SECTIONS.map(s => `<button type="button" class="set-tab" role="tab" id="tab-${s.id}" data-id="${s.id}" aria-selected="${s.id === setSection}" tabindex="${s.id === setSection ? 0 : -1}">${ic(s.icon, 18)}<span>${tr(s.label)}</span></button>`).join('');
+}
+buildSetTabs();
 setTabs.addEventListener('click', e => { const t = e.target.closest('.set-tab'); if (t && t.dataset.id !== setSection) showSection(t.dataset.id); });
 setTabs.addEventListener('keydown', e => {
   const k = e.key; if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(k)) return;
@@ -4605,14 +4757,14 @@ setTabs.addEventListener('keydown', e => {
 });
 
 async function toggleNotify() {
-  if (!notifSupported) return toast('Notifications aren’t supported in this browser');
+  if (!notifSupported) return toast(tr('Notifications aren’t supported in this browser'));
   const perm = Notification.permission;
-  if (perm === 'denied') toast('Notifications are blocked in your browser settings');
+  if (perm === 'denied') toast(tr('Notifications are blocked in your browser settings'));
   else if (perm === 'default') {
     let p = 'default'; try { p = await Notification.requestPermission(); } catch (e) { /* ignore */ }
-    if (p === 'granted') { S.notify = true; saveSettings(); if (!askEl.hidden) hideAsk(); toast('Notifications on'); }
-    else if (p === 'denied') toast('Notifications are blocked in your browser settings');
-  } else { S.notify = !S.notify; saveSettings(); toast(S.notify ? 'Notifications on' : 'Notifications paused'); }
+    if (p === 'granted') { S.notify = true; saveSettings(); if (!askEl.hidden) hideAsk(); toast(tr('Notifications on')); }
+    else if (p === 'denied') toast(tr('Notifications are blocked in your browser settings'));
+  } else { S.notify = !S.notify; saveSettings(); toast(tr(S.notify ? 'Notifications on' : 'Notifications paused')); }
   if (!S.notify) liveNotes.forEach((_, id) => closeNotesFor(id));
   syncControls();
 }
@@ -4620,8 +4772,8 @@ async function toggleNotify() {
 setBody.addEventListener('click', e => {
   const un = e.target.closest('[data-unmute]'); if (un) return unmuteId(un.dataset.unmute);
   if (e.target.closest('#setTest')) {
-    if (!notifyOn()) return toast('Turn notifications on first');
-    try { new Notification('Wormhole', { body: 'This is how new-message alerts will look.', tag: 'wh-test' }); } catch (err) { toast('Your browser blocked the test alert'); }
+    if (!notifyOn()) return toast(tr('Turn notifications on first'));
+    try { new Notification('Wormhole', { body: tr('This is how new-message alerts will look.'), tag: 'wh-test' }); } catch (err) { toast(tr('Your browser blocked the test alert')); }
     return;
   }
   const ctl = e.target.closest('[data-set]'); if (!ctl) return;
@@ -4638,12 +4790,21 @@ setBody.addEventListener('click', e => {
   if (k === 'timeFmt') refreshTimes();
   if (k === 'titleCount') updateTitle();
   if (k === 'textSize' || k === 'compact') { autosize(); }
-  if (k === 'encryption') toast(S.encryption === 'A128GCM' ? 'Encryption: AES-128' : 'Encryption: AES-256');
+  if (k === 'encryption') toast(tr('Encryption: {name}', { name: S.encryption === 'A128GCM' ? 'AES-128' : 'AES-256' }));
+});
+
+setBody.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-set="lang"]'); if (!sel) return;
+  S.lang = SETTING_CHOICES.lang.includes(sel.value) ? sel.value : 'auto';
+  saveSettings();
+  LANG = S.lang === 'auto' ? detectLang() : S.lang;
+  applyLanguage();
+  $('select[data-set="lang"]', setBody)?.focus({ preventScroll: true });
 });
 
 $('#setReset').addEventListener('click', () => {
-  Object.assign(S, SETTING_DEFAULTS); saveSettings(); applySettings(); setTheme('system'); updateTitle(); refreshTimes(); autosize();
-  syncControls(); toast('Settings reset');
+  Object.assign(S, SETTING_DEFAULTS); saveSettings(); applySettings(); setTheme('system'); LANG = detectLang(); applyLanguage(); updateTitle(); refreshTimes(); autosize();
+  syncControls(); toast(tr('Settings reset'));
 });
 
 function openSettings() {
@@ -4694,7 +4855,7 @@ const authEl = $('#auth'), formLogin = $('#formLogin'), formReg = $('#formRegist
 const MODE_COPY = {
   login: ['Welcome back', 'Sign in with your username or 8-digit ID.'],
   register: ['Create your account', 'Pick a username and password. Your ID is generated for you.'],
-};
+};   // English source text; translated in setMode()
 const USERNAME_RE = /^[A-Za-z][A-Za-z0-9_]{2,19}$/;
 let pendingUser = null;
 
@@ -4716,7 +4877,7 @@ function setMode(mode) {
   formLogin.hidden = mode !== 'login'; formReg.hidden = mode !== 'register';
   const f = mode === 'login' ? formLogin : formReg;
   clearErrors(f); replay(f, 'fade-in');
-  $('#authTitle').textContent = MODE_COPY[mode][0]; $('#authSub').textContent = MODE_COPY[mode][1];
+  $('#authTitle').textContent = tr(MODE_COPY[mode][0]); $('#authSub').textContent = tr(MODE_COPY[mode][1]);
 }
 function fieldErr(form, name, msg) {
   const f = $(`[name="${name}"]`, form)?.closest('.field'); if (!f) return false;
@@ -4724,17 +4885,17 @@ function fieldErr(form, name, msg) {
 }
 function clearErrors(form) { $$('.field.invalid', form).forEach(f => f.classList.remove('invalid')); $('.form-err', form).classList.remove('show'); }
 function formErr(form, msg) { const e = $('.form-err', form); e.textContent = msg; e.classList.remove('show'); void e.offsetWidth; e.classList.add('show'); }
-function busy(form, on, label) { const b = $('.auth-submit', form); b.disabled = on; b.textContent = on ? label : b.dataset.label; }
+function busy(form, on, label) { const b = $('.auth-submit', form); b.disabled = on; b.textContent = on ? label : tr(b.dataset.label); }
 function showError(form, r) {
   const er = r.data && r.data.error;
-  if (er && er.field && fieldErr(form, er.field, er.message)) return;
-  formErr(form, er ? er.message : r.network ? "Can't reach the server. Check your connection and try again." : 'Something went wrong. Please try again.');
+  if (er && er.field && fieldErr(form, er.field, tr(er.message))) return;    // server text is English; tr() localizes the known messages
+  formErr(form, er ? tr(er.message) : r.network ? tr("Can't reach the server. Check your connection and try again.") : tr('Something went wrong. Please try again.'));
 }
 
 $$('.auth-tabs button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 $$('.reveal').forEach(b => b.addEventListener('click', () => {
   const i = b.previousElementSibling, show = i.type === 'password';
-  i.type = show ? 'text' : 'password'; b.textContent = show ? 'Hide' : 'Show';
+  i.type = show ? 'text' : 'password'; b.textContent = tr(show ? 'Hide' : 'Show');
 }));
 [formLogin, formReg].forEach(f => f.addEventListener('input', e => e.target.closest('.field')?.classList.remove('invalid')));
 
@@ -4742,10 +4903,10 @@ formLogin.addEventListener('submit', async e => {
   e.preventDefault(); clearErrors(formLogin);
   const identifier = formLogin.identifier.value.trim(), password = formLogin.password.value;
   let bad = false;
-  if (!identifier) { fieldErr(formLogin, 'identifier', 'Enter your username or ID.'); bad = true; }
-  if (!password) { fieldErr(formLogin, 'password', 'Enter your password.'); bad = true; }
+  if (!identifier) { fieldErr(formLogin, 'identifier', tr('Enter your username or ID.')); bad = true; }
+  if (!password) { fieldErr(formLogin, 'password', tr('Enter your password.')); bad = true; }
   if (bad) return;
-  busy(formLogin, true, 'Signing in…');
+  busy(formLogin, true, tr('Signing in…'));
   const r = await api('/api/auth/login', { identifier, password });
   busy(formLogin, false);
   if (r.ok && r.data && r.data.user) { formLogin.reset(); enterApp(r.data.user); } else showError(formLogin, r);
@@ -4755,11 +4916,11 @@ formReg.addEventListener('submit', async e => {
   e.preventDefault(); clearErrors(formReg);
   const username = formReg.username.value.trim(), password = formReg.password.value, confirm = formReg.confirm.value;
   let bad = false;
-  if (!USERNAME_RE.test(username)) { fieldErr(formReg, 'username', 'Use 3–20 characters, starting with a letter. Letters, numbers and _ only.'); bad = true; }
-  if (password.length < 8) { fieldErr(formReg, 'password', 'Password must be at least 8 characters.'); bad = true; }
-  if (confirm !== password) { fieldErr(formReg, 'confirm', 'Passwords do not match.'); bad = true; }
+  if (!USERNAME_RE.test(username)) { fieldErr(formReg, 'username', tr('Use 3–20 characters, starting with a letter. Letters, numbers and _ only.')); bad = true; }
+  if (password.length < 8) { fieldErr(formReg, 'password', tr('Password must be at least 8 characters.')); bad = true; }
+  if (confirm !== password) { fieldErr(formReg, 'confirm', tr('Passwords do not match.')); bad = true; }
   if (bad) return;
-  busy(formReg, true, 'Creating account…');
+  busy(formReg, true, tr('Creating account…'));
   const r = await api('/api/auth/register', { username, password, confirm });
   busy(formReg, false);
   if (r.ok && r.data && r.data.user) {
@@ -4770,8 +4931,8 @@ formReg.addEventListener('submit', async e => {
 });
 $('#doneCopy').addEventListener('click', async () => {
   const b = $('#doneCopy');
-  try { await navigator.clipboard.writeText(pendingUser.id); b.textContent = 'Copied'; } catch (e) { b.textContent = 'Select and copy'; }
-  setTimeout(() => { b.textContent = 'Copy ID'; }, 1600);
+  try { await navigator.clipboard.writeText(pendingUser.id); b.textContent = tr('Copied'); } catch (e) { b.textContent = tr('Select and copy'); }
+  setTimeout(() => { b.textContent = tr('Copy ID'); }, 1600);
 });
 $('#doneGo').addEventListener('click', () => enterApp(pendingUser));
 
@@ -4779,7 +4940,7 @@ $('#doneGo').addEventListener('click', () => enterApp(pendingUser));
 function setMe(u) {
   const av = $('#meAv'); av.style.setProperty('--h', parseInt(u.id, 10) % 360);
   av.firstElementChild.textContent = u.username.slice(0, 2).toUpperCase();
-  $('#meName').textContent = u.username; $('#meId').textContent = 'ID ' + u.id;
+  $('#meName').textContent = u.username; $('#meId').dataset.id = u.id; $('#meId').textContent = tr('ID {id}', { id: u.id });
 }
 $('#btnLogout').addEventListener('click', async () => { await api('/api/auth/logout', {}); location.reload(); });
 
@@ -4794,7 +4955,7 @@ async function initAuth() {
   if (r.ok && r.data && r.data.user) { enterApp(r.data.user); return; }
   setMode('login');
   authEl.dataset.state = 'form';                         // card fades/slides in
-  if (r.data && r.data.error && r.data.error.code === 'misconfigured') formErr(formLogin, r.data.error.message);
+  if (r.data && r.data.error && r.data.error.code === 'misconfigured') formErr(formLogin, tr(r.data.error.message));
   setTimeout(() => formLogin.identifier.focus({ preventScroll: true }), 350);
 }
 
@@ -4821,6 +4982,59 @@ function startApp() {
   syncLoop();
   maybeAskNotifications();
 }
+
+/* ==========================================================================
+   LANGUAGE APPLICATION
+   Static markup keeps its English text; at boot every text node / attribute whose
+   English text is a known key is registered once, then re-written on each language
+   change. Dynamic UI is built with tr() and simply re-rendered.
+   ========================================================================== */
+const I18N_STATIC = [];
+function registerStatic() {
+  const known = new Set(Object.keys(DICT.zh || {}));
+  if (!known.size) return;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => /^(SCRIPT|STYLE)$/.test(n.parentNode.nodeName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  for (let n; (n = walker.nextNode()); ) {
+    const m = n.nodeValue.match(/^(\s*)([\s\S]*?)(\s*)$/), key = m[2].replace(/\s+/g, ' ');
+    if (key && known.has(key)) I18N_STATIC.push({ node: n, lead: m[1], key, trail: m[3] });
+  }
+  $$('[placeholder],[aria-label],[title],[alt]', document.body).forEach(el => {
+    ['placeholder', 'aria-label', 'title', 'alt'].forEach(a => {
+      const v = el.getAttribute(a); if (v && known.has(v)) I18N_STATIC.push({ el, attr: a, key: v });
+    });
+  });
+}
+function applyStatic() {
+  for (const e of I18N_STATIC) {
+    if (e.node) e.node.nodeValue = e.lead + tr(e.key) + e.trail;
+    else e.el.setAttribute(e.attr, tr(e.key));
+  }
+}
+function applyLanguage() {
+  const L = langInfo();
+  root.lang = L.html; root.dir = L.dir;
+  applyStatic();
+  BASE_TITLE = tr('Messages');
+  $$('.auth-submit').forEach(b => { if (!b.disabled && b.dataset.label) b.textContent = tr(b.dataset.label); });
+  $$('.reveal').forEach(b => { const i = b.previousElementSibling; b.textContent = tr(i && i.type === 'text' ? 'Hide' : 'Show'); });
+  if (started) {
+    $('#meId').textContent = tr('ID {id}', { id: meId() });
+    renderList(); renderRequests(); placeIndicator(false);
+    if (cur()) {
+      const top = messages.scrollTop, atBottom = nearBottom();
+      renderHeader(); renderInfo(true); renderMessages();
+      input.placeholder = tr('Message {name}', { name: cur().name.split(' ')[0] });
+      if (!atBottom) messages.scrollTop = top;
+    }
+    hideMenu();
+    buildSetTabs(); showSection(setSection, true);
+  }
+  updateTitle();
+}
+registerStatic();
+applyLanguage();
+
 initAuth();
 })();
 </script>
