@@ -52,6 +52,20 @@ If you prefer bindings in code, rename `wrangler.example.toml` to `wrangler.toml
 
 ---
 
+## Settings
+
+The **gear button** in the sidebar footer (it replaced the old sun/moon toggle) opens a settings dialog over a blurred app: sections on the left, options on the right. Everything is personal to the browser and stored in `localStorage`:
+
+| Section | Options |
+|---|---|
+| **Appearance** | Theme (Light / Dark / System), text size, compact messages, reduce motion |
+| **Notifications** | Desktop notifications on/off (needs the browser permission), message preview, test alert, unread count in the tab title, list of muted chats with Unmute |
+| **Messages** | Enter sends (or Ctrl/⌘ + Enter), 12/24-hour time, read receipts, typing indicator |
+
+Storage: `wh-settings` (JSON, all options above except theme), `chat-theme` (`light` / `dark`; absent = follow the system, read before first paint), `wh-muted:<id>` (unchanged). The sign-in screen keeps its own small theme toggle because the dialog is only available once signed in.
+
+---
+
 ## Notifications and mute
 
 On first sign-in the app shows a small card asking to turn notifications on (browsers require a click; "Not now" asks again after 7 days). Once allowed:

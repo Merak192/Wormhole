@@ -19,6 +19,14 @@
     var tc = document.querySelector('meta[name=theme-color]');
     if (tc) tc.setAttribute('content', t === 'dark' ? '#0A0A0A' : '#F3F3F1');
   } catch (e) {}
+  // Personal display settings (text size, density, motion) — also applied before first paint.
+  try {
+    var ws = JSON.parse(localStorage.getItem('wh-settings') || '{}') || {};
+    var de = document.documentElement;
+    if (ws.textSize === 'sm' || ws.textSize === 'lg') de.dataset.text = ws.textSize;
+    if (ws.compact === true) de.dataset.density = 'compact';
+    if (ws.reduceMotion === true) de.dataset.motion = 'reduce';
+  } catch (e) {}
 </script>
 
 <style>
@@ -377,7 +385,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 
 .bubble {
   position: relative; max-width: 520px; padding: 8px 12px; border-radius: var(--r-lg);
-  font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere;
+  font-size: var(--msg-fs, 14.5px); line-height: 1.5; overflow-wrap: anywhere;
   transition: opacity 200ms var(--ease), transform 200ms var(--ease), box-shadow var(--t-base) var(--ease);
 }
 .txt { white-space: pre-wrap; }
@@ -478,7 +486,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
   transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease);
 }
 .composer-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.composer textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; line-height: 22px; max-height: 140px; padding: 7px 0; font-size: 14.5px; }
+.composer textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; line-height: 22px; max-height: 140px; padding: 7px 0; font-size: var(--msg-fs, 14.5px); }
 .composer textarea::placeholder { color: var(--text-3); }
 /* Send: press = scale .96, release = springy return */
 .send {
@@ -889,6 +897,130 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .done-actions .btn { height: 42px; flex: 1; }
 .done-actions .auth-submit { margin: 0; flex: 1.4; }
 
+
+/* ==========================================================================
+   5d. SETTINGS — gear button in the sidebar footer opens a two-pane dialog
+   (section list on the left, options on the right) over a blurred app.
+   Same tokens, easing and control grammar as the rest of the UI.
+   ========================================================================== */
+:root[data-text="sm"] { --msg-fs: 13.5px; }
+:root[data-text="lg"] { --msg-fs: 16px; }
+:root[data-density="compact"] .thread { gap: 1px; }
+:root[data-density="compact"] .msg.gap { margin-top: 6px; }
+:root[data-density="compact"] .bubble { padding: 5px 11px; }
+:root[data-density="compact"] .day { margin: 14px 0 6px; }
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important; transition-delay: 0ms !important;
+}
+
+.set-layer { position: fixed; inset: 0; z-index: 42; display: grid; place-items: center; padding: 20px; visibility: hidden; pointer-events: none; transition: visibility 0s linear var(--t-slow); }
+.set-layer.open { visibility: visible; pointer-events: auto; transition-delay: 0s; }
+/* The whole app behind the dialog is blurred (a touch stronger than the other modals) */
+.set-backdrop {
+  position: absolute; inset: 0; background: rgba(10, 10, 10, 0.34);
+  backdrop-filter: blur(12px) saturate(1.05); -webkit-backdrop-filter: blur(12px) saturate(1.05);
+  opacity: 0; transition: opacity var(--t-slow) var(--ease);
+}
+.set {
+  position: relative; display: grid; grid-template-columns: 216px minmax(0, 1fr);
+  width: min(780px, 100%); height: min(540px, 100%); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
+  opacity: 0; transform: scale(0.96) translateY(6px);
+  transition: opacity var(--t-base) var(--ease), transform var(--t-slow) var(--ease);
+}
+.set-layer.open .set-backdrop { opacity: 1; }
+.set-layer.open .set { opacity: 1; transform: none; }
+
+.set-nav { display: flex; flex-direction: column; min-height: 0; padding: 20px 10px 12px; background: var(--side); border-right: 1px solid var(--line); }
+.set-nav h2 { margin: 0 0 14px; padding: 0 10px; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
+.set-tabs { display: flex; flex-direction: column; gap: 2px; }
+.set-tab {
+  position: relative; isolation: isolate; display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px;
+  border-radius: var(--r-md); font-size: 13.5px; font-weight: 500; color: var(--text-2); text-align: left;
+  transition: color var(--t-fast) var(--ease), transform var(--t-base) var(--ease);
+}
+/* Same card-on-sidebar treatment as the conversation rows */
+.set-tab::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--surface); box-shadow: var(--shadow-sm);
+  opacity: 0; transition: opacity var(--t-base) var(--ease);
+}
+.set-tab:hover { color: var(--text); }
+.set-tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
+.set-tab[aria-selected="true"]::before { opacity: 1; }
+.set-tab svg { flex: none; color: var(--text-3); transition: color var(--t-fast) var(--ease); }
+.set-tab[aria-selected="true"] svg { color: var(--accent); }
+.set-reset { margin-top: auto; height: 34px; padding: 0 10px; border-radius: var(--r-md); font-size: 12.5px; color: var(--text-3); text-align: left; }
+.set-reset:hover { color: var(--text-2); }
+
+.set-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.set-close { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.set-body { flex: 1; min-height: 0; padding: 24px 28px 28px; }
+.set-body.play > * { animation: fadeUp var(--t-slow) var(--ease) backwards; }
+.set-body.play > *:nth-child(2) { animation-delay: 50ms; }
+.set-body.play > *:nth-child(3) { animation-delay: 100ms; }
+.set-body.play > *:nth-child(4) { animation-delay: 150ms; }
+.set-title { margin: 0; padding-right: 40px; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
+.set-sub { margin: 4px 0 6px; font-size: 13px; color: var(--text-3); }
+.set-group { margin: 22px 0 2px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
+
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); transition: opacity var(--t-base) var(--ease); }
+.set-row:last-child { border-bottom: 0; }
+.set-label { min-width: 0; }
+.set-label b { display: block; font-size: 13.5px; font-weight: 500; }
+.set-label span { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--text-3); }
+.set-row .btn { flex: none; height: 32px; padding: 0 14px; }
+.set-row.off { opacity: 0.45; }
+.set-row.off .btn, .set-row.off .switch { pointer-events: none; }
+
+/* On / off switch */
+.switch {
+  position: relative; flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--line-strong);
+  transition: background var(--t-base) var(--ease), transform 320ms var(--spring);
+}
+.switch i {
+  position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 320ms var(--spring), background var(--t-base) var(--ease);
+}
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"] i { transform: translateX(16px); background: var(--on-accent); }
+.switch:active { transform: scale(0.94); transition-duration: 80ms; }
+
+/* Segmented control — the pill slides, it doesn't resize (like the sign-in tabs) */
+.seg { position: relative; flex: none; display: grid; grid-template-columns: repeat(var(--n), 1fr); padding: 3px; background: var(--sunken); border-radius: 12px; }
+.seg-pill {
+  position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); background: var(--surface); border-radius: 9px; box-shadow: var(--shadow-xs);
+  transform: translateX(calc(var(--i, 0) * 100%)); transition: transform var(--t-slow) var(--ease);
+}
+.seg button { position: relative; z-index: 1; height: 30px; padding: 0 14px; font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap; transition: color var(--t-fast) var(--ease); }
+.seg button[aria-checked="true"] { color: var(--text); }
+
+/* Live preview made from the real bubble classes, so it always matches the thread */
+.set-preview { display: flex; flex-direction: column; gap: 3px; margin: 18px 0 4px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.set-preview .msg.gap { margin-top: 6px; }
+:root[data-density="compact"] .set-preview { gap: 1px; }
+
+.mu-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.mu-row b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mu-row .btn { flex: none; height: 30px; padding: 0 12px; font-size: 12.5px; }
+.set-body .files-empty { padding: 8px 0; }
+
+@media (max-width: 640px) {
+  .set-layer { padding: 12px; }
+  .set { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: min(640px, 100%); }
+  .set-tabs { padding: 2px; }
+  .seg button { padding: 0 10px; }
+  .set-row { flex-wrap: wrap; }
+  .set-nav { padding: 14px 10px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .set-nav h2 { margin-bottom: 10px; }
+  .set-tabs { flex-direction: row; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+  .set-tab { width: auto; flex: none; padding: 0 12px; }
+  .set-reset { display: none; }
+  .set-body { padding: 18px 18px 24px; }
+  .set-close { top: 10px; right: 10px; }
+  .set-row { gap: 12px; }
+}
+
 /* ==========================================================================
    5c. IMAGE VIEWER, DROP TARGET, JUMP HIGHLIGHT
    The viewer is the one showpiece: the photo lifts out of the chat (FLIP) and
@@ -1019,9 +1151,7 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
     <footer class="sb-foot">
       <span class="av" id="meAv" style="--s:34px;--h:200"><span></span></span>
       <div class="me"><b id="meName"></b><span id="meId"></span></div>
-      <button class="icon-btn hv theme-btn" id="btnTheme" aria-label="Toggle dark mode" aria-pressed="false">
-        <span class="ic sun" data-ic="sun"></span><span class="ic moon" data-ic="moon"></span>
-      </button>
+      <button class="icon-btn hv" id="btnSettings" aria-label="Settings" title="Settings" aria-haspopup="dialog" data-ic="settings"></button>
       <button class="icon-btn hv" id="btnLogout" aria-label="Sign out" title="Sign out" data-ic="logout"></button>
     </footer>
   </aside>
@@ -1083,6 +1213,22 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
     <div class="modal-actions">
       <button class="btn hv" id="modalCancel">Cancel</button>
       <button class="btn danger" id="modalConfirm">Clear conversation</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="set-layer" id="settings" aria-hidden="true">
+  <div class="set-backdrop" id="setBackdrop"></div>
+  <div class="set" role="dialog" aria-modal="true" aria-labelledby="setHeading">
+    <nav class="set-nav" aria-label="Settings sections">
+      <h2 id="setHeading">Settings</h2>
+      <div class="set-tabs" id="setTabs" role="tablist" aria-orientation="vertical"></div>
+      <button class="set-reset" id="setReset" type="button">Reset to defaults</button>
+    </nav>
+    <div class="set-main">
+      <button class="icon-btn hv set-close" id="setClose" type="button" aria-label="Close settings" data-ic="close"></button>
+      <div class="set-body scroll" id="setBody" role="tabpanel"></div>
     </div>
   </div>
 </div>
@@ -1224,6 +1370,40 @@ const wireId = () => {
 };
 const validTag = id => typeof id === 'string' && id.length > 0 && id.length <= 64 && /^[\w-]+$/.test(id);
 
+/* ==========================================================================
+   SETTINGS STORE — personal, per browser (localStorage: wh-settings).
+   Theme keeps its own key (chat-theme) because the <head> script reads it
+   before first paint; everything else lives in this one JSON object.
+   ========================================================================== */
+const SETTINGS_KEY = 'wh-settings';
+const SETTING_DEFAULTS = {
+  textSize: 'md',        // sm | md | lg
+  compact: false,
+  reduceMotion: false,
+  notify: true,          // in-app pause switch on top of the browser permission
+  preview: true,         // show the message text in notifications
+  titleCount: true,      // "(3) Messages" in the tab title
+  enterSend: true,       // false: Ctrl/Cmd+Enter sends, Enter adds a line
+  timeFmt: 'auto',       // auto | 12 | 24
+  readReceipts: true,
+  typing: true,
+};
+const SETTING_CHOICES = { textSize: ['sm', 'md', 'lg'], timeFmt: ['auto', '12', '24'] };
+function loadSettings() {
+  const out = { ...SETTING_DEFAULTS };
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+    for (const k of Object.keys(SETTING_DEFAULTS)) {
+      if (!(k in raw)) continue;
+      if (SETTING_CHOICES[k] ? SETTING_CHOICES[k].includes(raw[k]) : typeof raw[k] === typeof SETTING_DEFAULTS[k]) out[k] = raw[k];
+    }
+  } catch (e) { /* corrupt or blocked: fall back to defaults */ }
+  return out;
+}
+const S = loadSettings();
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(S)); } catch (e) { /* quota / private mode */ } }
+const motionOff = () => reduceMQ.matches || S.reduceMotion;
+
 /* Retrigger a CSS animation class */
 function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 
@@ -1252,6 +1432,9 @@ const ICONS = {
   zoomIn: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8.5v5M8.5 11h5"/>',
   zoomOut: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8.5 11h5"/>',
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+  palette: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" stroke="none"/>',
+  message: '<path d="M5 4.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-4.5 3.5V17.5H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z"/>',
   left: '<path d="m14.5 5-7 7 7 7"/>',
   right: '<path d="m9.5 5 7 7-7 7"/>',
 };
@@ -1259,7 +1442,10 @@ const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" f
 const tick = s => `<svg class="tick" data-s="${s}" width="16" height="11" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="t1" d="M1.5 6.5 5 10 12 2.5"/><path class="t2" d="M9 9.5l1 1L17 3"/></svg>`;
 
 /* Time formatting */
-const fmtTime = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const timeOpts = () => S.timeFmt === '12' ? { hour: 'numeric', minute: '2-digit', hour12: true }
+                    : S.timeFmt === '24' ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+                    : { hour: 'numeric', minute: '2-digit' };
+const fmtTime = d => d.toLocaleTimeString([], timeOpts());
 const sameDay = (a, b) => a.toDateString() === b.toDateString();
 function dayLabel(d) {
   const n = new Date(); if (sameDay(d, n)) return 'Today';
@@ -1319,14 +1505,19 @@ const statusText = c => c.typing ? 'typing…' : c.status === 'online' ? 'Online
    THEME — 300ms colour cross-fade via a temporary .theming class
    ========================================================================== */
 let themeT;
-function setTheme(t) {
+const mqDark = matchMedia('(prefers-color-scheme: dark)');
+/* The stored preference is 'light', 'dark', or nothing at all (= follow the system). */
+function themePref() { try { const v = localStorage.getItem('chat-theme'); return v === 'light' || v === 'dark' ? v : 'system'; } catch (e) { return 'system'; } }
+function setTheme(pref) {
+  const t = pref === 'system' ? (mqDark.matches ? 'dark' : 'light') : pref;
   root.classList.add('theming'); clearTimeout(themeT);
   themeT = setTimeout(() => root.classList.remove('theming'), 360);
   root.dataset.theme = t;
   $('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#0A0A0A' : '#F3F3F1');
   $$('.theme-btn').forEach(b => b.setAttribute('aria-pressed', t === 'dark'));
-  try { localStorage.setItem('chat-theme', t); } catch (e) {}
+  try { pref === 'system' ? localStorage.removeItem('chat-theme') : localStorage.setItem('chat-theme', pref); } catch (e) {}
 }
+mqDark.addEventListener?.('change', () => { if (themePref() === 'system') setTheme('system'); });
 $$('.theme-btn').forEach(b => {
   b.setAttribute('aria-pressed', root.dataset.theme === 'dark');
   b.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
@@ -1385,7 +1576,7 @@ function setPanel(which, open) {
   const docked = which === 'info' ? mqInfo.matches : mqSb.matches;
   if (el.classList.contains('leaving') || el.dataset.moving) return;
   if ((app.dataset[which] === 'open') === open) return;
-  const animate = docked && !reduceMQ.matches && !!el.animate;
+  const animate = docked && !motionOff() && !!el.animate;
   if (open) {
     app.dataset[which] = 'open';
     if (which === 'info') playInfo();
@@ -1480,7 +1671,7 @@ function placeIndicator(animate) {
     if (slide().length && Math.abs(indTarget - y) < 0.5) return;
     return snap();
   }
-  if (wasHidden || reduceMQ.matches || !indicator.animate || indTarget === null) return snap();
+  if (wasHidden || motionOff() || !indicator.animate || indTarget === null) return snap();
   // Start from where the bar is ON SCREEN right now (it may be mid-slide), not from the first row
   // or the last resting spot.
   const from = new DOMMatrix(getComputedStyle(indicator).transform).m42;
@@ -1529,7 +1720,7 @@ function updateStatus(force) {
   const txt = statusText(c);
   if (force || el.textContent !== txt) { el.textContent = txt; el.classList.toggle('is-typing', c.typing); if (!force) replay(el, 'flip'); }
 }
-function localTime(tz) { try { return new Date().toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+function localTime(tz) { try { return new Date().toLocaleTimeString([], { ...timeOpts(), timeZone: tz }); } catch (e) { return ''; } }
 /**
  * In-place value patch for the info panel. Used on every poll tick instead of
  * a full innerHTML rebuild (which caused the per-second flicker). Updates only
@@ -1642,7 +1833,7 @@ async function refreshSharedFiles(peerId) {
 /* ==========================================================================
    MESSAGES
    ========================================================================== */
-const reduce = () => reduceMQ.matches;
+const reduce = () => motionOff();
 function scrollBottom(smooth) { messages.scrollTo({ top: messages.scrollHeight, behavior: smooth && !reduce() ? 'smooth' : 'auto' }); }
 const nearBottom = () => messages.scrollHeight - messages.scrollTop - messages.clientHeight < 160;
 let pinned = true;   // is the thread scrolled to (near) the bottom? Photos use this when they finish loading.
@@ -1891,6 +2082,7 @@ const readTracker = (() => {
   function flush() {
     flushT = 0;
     for (const [peer, ids] of outgoing) {
+      if (!S.readReceipts) continue;         // Settings > Messages: read receipts off (delivered ticks still go out)
       const all = [...ids];
       for (let i = 0; i < all.length; i += MAX_ACK) {
         const part = all.slice(i, i + MAX_ACK);
@@ -2098,7 +2290,12 @@ input.addEventListener('blur', () => {
   if (typingActive) { typingActive = false; }
   if (c?.friend) sendTyping(c.friendId, false);
 });
-input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+input.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  // Settings > Messages: Enter sends (Shift+Enter = new line), or Ctrl/Cmd+Enter sends (Enter = new line)
+  const sends = S.enterSend ? !e.shiftKey : (e.ctrlKey || e.metaKey);
+  if (sends) { e.preventDefault(); send(); }
+});
 btnSend.addEventListener('click', () => { send(); input.focus(); });
 
 function send() {
@@ -3746,6 +3943,7 @@ function sendAck(peerId, kind, ids, attempt = 0) {
    being 'open' (like sendReadReceipt) and do NOT queue it. If the peer's
    channel isn't up, the indicator simply won't show — no retry, no outbox. */
 function sendTyping(peerId, on) {
+  if (on && !S.typing) return;               // Settings > Messages: typing indicator off ("stopped" signals still go out)
   const entry = p2p.get(peerId);
   if (byId(peerId)?.p2pState === 'open' && entry?.chatAction?.()?.send) {
     entry.chatAction().send({ kind: 'typing', on }).catch(() => {});
@@ -4181,6 +4379,7 @@ const BASE_TITLE = document.title;
 const windowAttentive = () => document.visibilityState === 'visible' && document.hasFocus();
 
 function updateTitle() {
+  if (!S.titleCount) { document.title = BASE_TITLE; return; }
   const n = people.reduce((sum, c) => sum + (c.muted ? 0 : (c.unread || 0)), 0);
   document.title = n ? `(${n > 99 ? '99+' : n}) ${BASE_TITLE}` : BASE_TITLE;
 }
@@ -4188,7 +4387,7 @@ function closeNotesFor(peerId) { const n = liveNotes.get(peerId); if (n) { try {
 
 function notifyIncoming(c, body, id) {
   if (!notifSupported || Notification.permission !== 'granted' || !c) return;
-  if (c.muted) return;                                           // mute = fully silent
+  if (c.muted || !S.notify) return;                              // mute / app-level pause = fully silent
   if (id) {
     if (notified.has(id)) return;
     notified.add(id); if (notified.size > 500) notified.delete(notified.values().next().value);
@@ -4196,6 +4395,7 @@ function notifyIncoming(c, body, id) {
   if (c.id === state.active && windowAttentive()) return;        // they're looking right at it
   let text = String(body == null ? '' : body).replace(/\s+/g, ' ').trim();
   if (text.length > 120) text = text.slice(0, 117) + '…';
+  if (!S.preview) text = 'New message';
   try {
     closeNotesFor(c.id);
     const n = new Notification(c.name, { body: text || 'New message', tag: 'wh-' + c.id, renotify: true });
@@ -4228,6 +4428,182 @@ window.addEventListener('focus', () => { if (state.active) closeNotesFor(state.a
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state.active) closeNotesFor(state.active); });
 
 /* ==========================================================================
+   SETTINGS UI — sections: Appearance · Notifications · Messages
+   Controls are rendered once per section and then updated in place, so the
+   switches and the segmented pill animate instead of being re-created.
+   ========================================================================== */
+const setLayer = $('#settings'), setTabs = $('#setTabs'), setBody = $('#setBody');
+const isApple = /Mac|iPhone|iPad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+const SET_SECTIONS = [
+  { id: 'appearance',    label: 'Appearance',    icon: 'palette', title: 'Appearance',    sub: 'How Wormhole looks on this device.' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell',    title: 'Notifications', sub: 'Alerts for new messages and incoming files.' },
+  { id: 'messages',      label: 'Messages',      icon: 'message', title: 'Messages',      sub: 'Writing, time and what others can see.' },
+];
+let setSection = 'appearance', setLastFocus = null;
+
+const uiSwitch = (key, extra = '') => `<button type="button" class="switch" role="switch" aria-checked="false" data-set="${key}" ${extra}><i></i></button>`;
+const uiSeg = (key, opts, label) => `<div class="seg" role="radiogroup" aria-label="${label}" data-set="${key}" style="--n:${opts.length}">${
+  opts.map(([v, l]) => `<button type="button" role="radio" aria-checked="false" data-v="${v}">${l}</button>`).join('')}<span class="seg-pill"></span></div>`;
+const uiRow = (label, desc, ctl, attrs = '') => `<div class="set-row" ${attrs}><div class="set-label"><b>${label}</b><span>${desc}</span></div>${ctl}</div>`;
+
+const SET_VIEWS = {
+  appearance: () => `
+    <div class="set-preview" aria-hidden="true">
+      <div class="msg other"><div class="bubble"><span class="txt">Are we still on for tonight?</span></div></div>
+      <div class="msg self gap"><div class="bubble"><span class="txt">Yes — see you at eight.</span></div></div>
+    </div>
+    ${uiRow('Theme', 'Light, dark, or match your device.', uiSeg('theme', [['light', 'Light'], ['dark', 'Dark'], ['system', 'System']], 'Theme'))}
+    ${uiRow('Text size', 'Size of message text and the composer.', uiSeg('textSize', [['sm', 'Small'], ['md', 'Default'], ['lg', 'Large']], 'Text size'))}
+    ${uiRow('Compact messages', 'Tighter spacing between messages.', uiSwitch('compact'))}
+    ${uiRow('Reduce motion', 'Fewer sliding and fading effects.', uiSwitch('reduceMotion'))}`,
+  notifications: () => `
+    ${uiRow('Desktop notifications', '<span id="notifHint" style="margin:0"></span>', uiSwitch('notify'))}
+    ${uiRow('Show message preview', 'Off: alerts only say “New message”.', uiSwitch('preview'), 'data-needs-notify')}
+    ${uiRow('Send a test alert', 'Check how a notification looks.', '<button type="button" class="btn hv" id="setTest">Send test</button>', 'data-needs-notify')}
+    ${uiRow('Unread count in tab title', 'Shows “(3) Messages” while you’re away.', uiSwitch('titleCount'))}
+    <div class="set-group">Muted chats</div>
+    <div id="mutedList"></div>`,
+  messages: () => `
+    ${uiRow('Enter sends message', isApple ? 'Off: press ⌘ Enter to send; Enter adds a new line.' : 'Off: press Ctrl Enter to send; Enter adds a new line.', uiSwitch('enterSend'))}
+    ${uiRow('Time format', 'Used in chats and the conversation list.', uiSeg('timeFmt', [['auto', 'Auto'], ['12', '12-hour'], ['24', '24-hour']], 'Time format'))}
+    <div class="set-group">Privacy</div>
+    ${uiRow('Read receipts', 'Off: people see your replies as delivered, never as read.', uiSwitch('readReceipts'))}
+    ${uiRow('Typing indicator', 'Let people see when you’re writing to them.', uiSwitch('typing'))}`,
+};
+
+const notifyOn = () => notifSupported && Notification.permission === 'granted' && S.notify;
+function notifHint() {
+  if (!notifSupported) return 'This browser doesn’t support notifications.';
+  if (!window.isSecureContext) return 'Notifications need a secure (https) connection.';
+  if (Notification.permission === 'denied') return 'Blocked in your browser’s site settings. Allow them there, then come back.';
+  if (Notification.permission === 'default') return 'Turn on to let your browser ask for permission.';
+  return S.notify ? 'On while this tab is open. Muted chats stay silent.' : 'Paused. You won’t be alerted until you turn this back on.';
+}
+
+function applySettings() {
+  const set = (k, v) => v ? root.dataset[k] = v : delete root.dataset[k];
+  set('text', S.textSize === 'md' ? '' : S.textSize);
+  set('density', S.compact ? 'compact' : '');
+  set('motion', S.reduceMotion ? 'reduce' : '');
+}
+function syncControls() {
+  $$('[data-set]', setBody).forEach(el => {
+    const k = el.dataset.set;
+    if (el.classList.contains('switch')) el.setAttribute('aria-checked', String(k === 'notify' ? notifyOn() : !!S[k]));
+    else if (el.classList.contains('seg')) {
+      const v = k === 'theme' ? themePref() : S[k], btns = $$('[role="radio"]', el);
+      btns.forEach(b => b.setAttribute('aria-checked', String(b.dataset.v === v)));
+      el.style.setProperty('--i', Math.max(0, btns.findIndex(b => b.dataset.v === v)));
+    }
+  });
+  const on = notifyOn();
+  $$('[data-needs-notify]', setBody).forEach(r => r.classList.toggle('off', !on));
+  const h = $('#notifHint'); if (h) h.textContent = notifHint();
+}
+function renderMuted() {
+  const box = $('#mutedList'); if (!box) return;
+  const ids = [...mutedSet()];
+  box.innerHTML = ids.length ? ids.map(id => {
+    const c = byId(id), name = c ? c.name : 'ID ' + id;
+    return `<div class="mu-row"><span class="av" style="--s:30px;--h:${c ? c.h : 200}"><span>${c ? esc(initials(c.name)) : '?'}</span></span><b>${esc(name)}</b><button type="button" class="btn hv" data-unmute="${esc(id)}">Unmute</button></div>`;
+  }).join('') : '<div class="files-empty">No muted chats. Mute one from its ⋯ menu.</div>';
+}
+function unmuteId(id) {
+  const c = byId(id);
+  if (c) { c.muted = false; saveMuted(c); }
+  else { const set = mutedSet(); set.delete(id); try { localStorage.setItem(MUTE_KEY(), JSON.stringify([...set])); } catch (e) {} }
+  updateTitle(); renderMuted();
+  if (c && c.id === state.active) { const s = $('[data-i="mute"] span', infoBody); if (s) s.textContent = 'Mute'; }
+  toast(c ? `Unmuted ${c.name.split(' ')[0]}` : 'Unmuted');
+}
+/* Clock format changed: patch the visible times in place (no re-render, no scroll jump) */
+function refreshTimes() {
+  const c = cur();
+  if (c) $$('.msg[data-mid]', messages).forEach(r => {
+    const m = c.messages.find(x => x.id === r.dataset.mid), t = $('time', r);
+    if (m && t) t.textContent = fmtTime(m.t);
+  });
+  people.forEach(p => patchRow(p));
+}
+
+function showSection(id, first) {
+  const sec = SET_SECTIONS.find(x => x.id === id) || SET_SECTIONS[0];
+  setSection = sec.id;
+  $$('.set-tab', setTabs).forEach(t => { const on = t.dataset.id === sec.id; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+  setBody.setAttribute('aria-labelledby', 'tab-' + sec.id);
+  setBody.innerHTML = `<h3 class="set-title">${sec.title}</h3><p class="set-sub">${sec.sub}</p>${SET_VIEWS[sec.id]()}`;
+  setBody.scrollTop = 0;
+  if (!first && !motionOff()) replay(setBody, 'play'); else setBody.classList.remove('play');
+  syncControls(); renderMuted();
+}
+setTabs.innerHTML = SET_SECTIONS.map(s => `<button type="button" class="set-tab" role="tab" id="tab-${s.id}" data-id="${s.id}" aria-selected="false">${ic(s.icon, 18)}<span>${s.label}</span></button>`).join('');
+setTabs.addEventListener('click', e => { const t = e.target.closest('.set-tab'); if (t && t.dataset.id !== setSection) showSection(t.dataset.id); });
+setTabs.addEventListener('keydown', e => {
+  const k = e.key; if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(k)) return;
+  e.preventDefault();
+  const i = SET_SECTIONS.findIndex(x => x.id === setSection), n = SET_SECTIONS.length;
+  const j = k === 'Home' ? 0 : k === 'End' ? n - 1 : (i + (k === 'ArrowUp' || k === 'ArrowLeft' ? -1 : 1) + n) % n;
+  showSection(SET_SECTIONS[j].id); $('.set-tab[aria-selected="true"]', setTabs).focus();
+});
+
+async function toggleNotify() {
+  if (!notifSupported) return toast('Notifications aren’t supported in this browser');
+  const perm = Notification.permission;
+  if (perm === 'denied') toast('Notifications are blocked in your browser settings');
+  else if (perm === 'default') {
+    let p = 'default'; try { p = await Notification.requestPermission(); } catch (e) { /* ignore */ }
+    if (p === 'granted') { S.notify = true; saveSettings(); if (!askEl.hidden) hideAsk(); toast('Notifications on'); }
+    else if (p === 'denied') toast('Notifications are blocked in your browser settings');
+  } else { S.notify = !S.notify; saveSettings(); toast(S.notify ? 'Notifications on' : 'Notifications paused'); }
+  if (!S.notify) liveNotes.forEach((_, id) => closeNotesFor(id));
+  syncControls();
+}
+
+setBody.addEventListener('click', e => {
+  const un = e.target.closest('[data-unmute]'); if (un) return unmuteId(un.dataset.unmute);
+  if (e.target.closest('#setTest')) {
+    if (!notifyOn()) return toast('Turn notifications on first');
+    try { new Notification('Wormhole', { body: 'This is how new-message alerts will look.', tag: 'wh-test' }); } catch (err) { toast('Your browser blocked the test alert'); }
+    return;
+  }
+  const ctl = e.target.closest('[data-set]'); if (!ctl) return;
+  const k = ctl.dataset.set;
+  if (ctl.classList.contains('switch')) {
+    if (k === 'notify') return toggleNotify();
+    S[k] = !S[k];
+  } else {
+    const b = e.target.closest('[role="radio"]'); if (!b) return;
+    if (k === 'theme') { setTheme(b.dataset.v); syncControls(); return; }
+    S[k] = b.dataset.v;
+  }
+  saveSettings(); applySettings(); syncControls();
+  if (k === 'timeFmt') refreshTimes();
+  if (k === 'titleCount') updateTitle();
+  if (k === 'textSize' || k === 'compact') { autosize(); }
+});
+
+$('#setReset').addEventListener('click', () => {
+  Object.assign(S, SETTING_DEFAULTS); saveSettings(); applySettings(); setTheme('system'); updateTitle(); refreshTimes(); autosize();
+  syncControls(); toast('Settings reset');
+});
+
+function openSettings() {
+  hideMenu();
+  setLastFocus = document.activeElement;
+  showSection(setSection, true);
+  setLayer.classList.add('open'); setLayer.setAttribute('aria-hidden', 'false');
+  setTimeout(() => $('.set-tab[aria-selected="true"]', setTabs)?.focus({ preventScroll: true }), 60);
+}
+function closeSettings() {
+  setLayer.classList.remove('open'); setLayer.setAttribute('aria-hidden', 'true');
+  try { setLastFocus?.focus?.({ preventScroll: true }); } catch (e) { /* ignore */ }
+}
+$('#btnSettings').addEventListener('click', openSettings);
+$('#setClose').addEventListener('click', closeSettings);
+$('#setBackdrop').addEventListener('click', closeSettings);
+applySettings(); updateTitle();
+
+/* ==========================================================================
    TOAST
    ========================================================================== */
 let toastT;
@@ -4242,7 +4618,8 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); setPanel('sidebar', true); setTimeout(() => $('#convSearch').focus(), 60);
   }
   if (e.key === 'Escape') {
-    if (modal.classList.contains('open')) closeModal();
+    if (setLayer.classList.contains('open')) closeSettings();
+    else if (modal.classList.contains('open')) closeModal();
     else if (addModal.classList.contains('open')) closeAdd();
     else if (menu.classList.contains('open')) hideMenu();
     else if (csearch.classList.contains('open')) closeSearch();
