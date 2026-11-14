@@ -997,6 +997,27 @@ html.theming, html.theming *, html.theming *::before, html.theming *::after {
 .set-preview .msg.gap { margin-top: 6px; }
 :root[data-density="compact"] .set-preview { gap: 1px; }
 
+/* Choice cards (Encryption) — same surface/border/accent grammar as the rest */
+.opt-list { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 6px; }
+.opt {
+  position: relative; display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 14px 16px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-base) var(--ease), transform 320ms var(--spring), background var(--t-fast) var(--ease);
+}
+.opt:hover { background: var(--hover); }
+.opt:active { transform: scale(0.99); transition-duration: 80ms; }
+.opt[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
+.opt-dot { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; transition: border-color var(--t-fast) var(--ease); }
+.opt-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); transform: scale(0); transition: transform 320ms var(--spring); }
+.opt[aria-checked="true"] .opt-dot { border-color: var(--accent); }
+.opt[aria-checked="true"] .opt-dot::after { transform: scale(1); }
+.opt-txt { min-width: 0; }
+.opt-txt b { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: calc(14px * var(--ts, 1)); font-weight: 600; letter-spacing: -0.01em; }
+.opt-txt em { font-style: normal; font-size: calc(11px * var(--ts, 1)); font-weight: 500; letter-spacing: 0; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.opt-txt span { display: block; margin-top: 3px; font-size: calc(12.5px * var(--ts, 1)); line-height: 1.45; color: var(--text-3); }
+.set-chip { flex: none; padding: 3px 10px; border-radius: 999px; font-size: calc(11.5px * var(--ts, 1)); font-weight: 500; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.set-chip.dim { background: var(--sunken); color: var(--text-3); }
+
 .mu-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .mu-row b { flex: 1; min-width: 0; font-size: calc(13.5px * var(--ts, 1)); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mu-row .btn { flex: none; height: 30px; padding: 0 12px; font-size: calc(12.5px * var(--ts, 1)); }
@@ -1384,8 +1405,9 @@ const SETTING_DEFAULTS = {
   timeFmt: 'auto',       // auto | 12 | 24
   readReceipts: true,
   typing: true,
+  encryption: 'A256GCM', // A256GCM (default, recommended) | A128GCM — how MY messages' cloud copy and MY files are encrypted
 };
-const SETTING_CHOICES = { textSize: ['sm', 'md', 'lg'], timeFmt: ['auto', '12', '24'] };
+const SETTING_CHOICES = { textSize: ['sm', 'md', 'lg'], timeFmt: ['auto', '12', '24'], encryption: ['A256GCM', 'A128GCM'] };
 function loadSettings() {
   const out = { ...SETTING_DEFAULTS };
   try {
@@ -1430,6 +1452,7 @@ const ICONS = {
   zoomOut: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8.5 11h5"/>',
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><path d="M12 14.5v2"/>',
   palette: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor" stroke="none"/>',
   message: '<path d="M5 4.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-4.5 3.5V17.5H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z"/>',
   left: '<path d="m14.5 5-7 7 7 7"/>',
@@ -3138,17 +3161,33 @@ const b64dec = s => {
    many chunks is safe. No PBKDF2: the pair key is already a 256-bit AES
    key, and adding a KDF only multiplied the ways the two sides could end
    up with different bases (the original bug). */
-const fileKeyCache = new Map();    // peerId -> CryptoKey
-async function fileKeyFor(peerId) {
-  let key = fileKeyCache.get(peerId);
+const fileKeyCache = new Map();    // "peerId:alg" -> CryptoKey
+/* Encryption methods (Settings > Encryption). The SENDER chooses; every chunk
+   frame carries its method in `alg`, so the receiver decrypts with whatever the
+   sender used, regardless of its own setting. A missing/unknown value means
+   AES-256-GCM (older clients). AES-256 uses the pair key directly; AES-128
+   uses a 128-bit key derived from it with HKDF-SHA-256 — the same derivation
+   the server uses for the message archive (functions/_lib/friends.js). */
+const ENC_ALGS = ['A256GCM', 'A128GCM'];
+const encAlg = a => ENC_ALGS.includes(a) ? a : 'A256GCM';
+async function fileKeyFor(peerId, alg) {
+  alg = encAlg(alg);
+  const ck = peerId + ':' + alg;
+  let key = fileKeyCache.get(ck);
   if (key) return key;
   // Make sure the shared pair key is loaded before importing it.
   if (!keys.get(peerId)) await refreshFriendHistory(peerId);
   const pair = keys.get(peerId);
   if (!pair) throw new Error('pair key not available yet');
-  key = await crypto.subtle.importKey('raw', b64dec(pair),
-    { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-  fileKeyCache.set(peerId, key);
+  if (alg === 'A256GCM') {
+    key = await crypto.subtle.importKey('raw', b64dec(pair), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  } else {
+    const base = await crypto.subtle.importKey('raw', b64dec(pair), 'HKDF', false, ['deriveKey']);
+    key = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode('wh-aes-128-gcm') },
+      base, { name: 'AES-GCM', length: 128 }, false, ['encrypt', 'decrypt']);
+  }
+  fileKeyCache.set(ck, key);
   return key;
 }
 
@@ -3168,6 +3207,7 @@ function offerFileToFriend(c, file) {
     fileId: offerId,
     name: file.name, type: file.type || 'application/octet-stream',
     size: file.size, at: Date.now(),
+    alg: S.encryption,            // how the chunks of THIS file will be encrypted (fixed at offer time)
   };
   // Persist metadata now (status 'sending') so it survives a refresh mid-send.
   void api('/api/files/meta', { uuid: c.friendId, ...offer, status: 'sending' });
@@ -3204,8 +3244,9 @@ async function handleFileAccept(peerId, offerId) {
   if (!rec || rec.dir !== 'send' || rec.started || rec.aborted) return;
   rec.started = true;
   const { offer, file } = rec;
+  const alg = encAlg(offer.alg);
   let key;
-  try { key = await fileKeyFor(peerId); }
+  try { key = await fileKeyFor(peerId, alg); }
   catch (e) { console.warn('[wh file] sender: pair key not ready, cannot start:', e.message); return; }
   const total = Math.max(1, Math.ceil(file.size / CHUNK));
   let i = 0;
@@ -3217,7 +3258,7 @@ async function handleFileAccept(peerId, offerId) {
       { name: 'AES-GCM', iv: nonce }, key, await slice.arrayBuffer()));
     const frame = new Uint8Array(12 + ct.length);
     frame.set(nonce, 0); frame.set(ct, 12);
-    await sendChunk(peerId, { kind: 'file-chunk', offerId, i, total, last: i + 1 === total,
+    await sendChunk(peerId, { kind: 'file-chunk', offerId, i, total, last: i + 1 === total, alg,
       data: b64enc(frame) });
     if (i === 0 || (i + 1) % 5 === 0 || i + 1 === total) {
       upsertFileRow(peerId, rec, { status: 'sending', progress: (i + 1) / total });
@@ -3251,7 +3292,7 @@ async function handleFileChunk(peerId, data) {
   if (!rec || rec.dir !== 'recv' || rec.aborted) return;
   if (data.last) rec.totalChunks = data.total;
   let key;
-  try { key = await fileKeyFor(peerId); }
+  try { key = await fileKeyFor(peerId, data.alg); }   // the sender's method, taken from the chunk itself
   catch (e) { console.warn('[wh file] receiver: pair key not ready:', e.message); return; }
   const raw = b64dec(data.data);
   try {
@@ -4275,12 +4316,13 @@ function sendToFriend(c) {
   clearTimeout(typingDeb); clearTimeout(typingIdle); typingActive = false;
   sendTyping(c.friendId, false);
 
-  // 3) Cloud archive: the AES-256-encrypted copy to KV is what a new device
+  // 3) Cloud archive: the AES-encrypted copy to KV (method = Settings > Encryption,
+  //    AES-256-GCM by default) is what a new device
   //    restores and what the peer's KV-sync poll picks up if P2P isn't live.
   //    Fire-and-forget; a failed write silently degrades to the peer's P2P
   //    delivery — we don't toast on every send, that would be noise.
   const me = meId();
-  if (me && c.friendId) void api('/api/friends/history', { uuid: c.friendId, text, id: m.id });
+  if (me && c.friendId) void api('/api/friends/history', { uuid: c.friendId, text, id: m.id, alg: S.encryption });
 }
 
 /* ---- Receive from a P2P peer (called by the bridge when a message lands) ---- */
@@ -4435,12 +4477,15 @@ const SET_SECTIONS = [
   { id: 'appearance',    label: 'Appearance',    icon: 'palette', title: 'Appearance',    sub: 'How Wormhole looks on this device.' },
   { id: 'notifications', label: 'Notifications', icon: 'bell',    title: 'Notifications', sub: 'Alerts for new messages and incoming files.' },
   { id: 'messages',      label: 'Messages',      icon: 'message', title: 'Messages',      sub: 'Writing, time and what others can see.' },
+  { id: 'encryption',    label: 'Encryption',    icon: 'lock',    title: 'Encryption',    sub: 'How your saved messages and sent files are encrypted.' },
 ];
 let setSection = 'appearance', setLastFocus = null;
 
 const uiSwitch = (key, extra = '') => `<button type="button" class="switch" role="switch" aria-checked="false" data-set="${key}" ${extra}><i></i></button>`;
 const uiSeg = (key, opts, label) => `<div class="seg" role="radiogroup" aria-label="${label}" data-set="${key}" style="--n:${opts.length}">${
   opts.map(([v, l]) => `<button type="button" role="radio" aria-checked="false" data-v="${v}">${l}</button>`).join('')}<span class="seg-pill"></span></div>`;
+const uiOpts = (key, opts, label) => `<div class="opt-list" role="radiogroup" aria-label="${label}" data-set="${key}">${
+  opts.map(([v, name, tag, desc]) => `<button type="button" class="opt" role="radio" aria-checked="false" data-v="${v}"><span class="opt-dot"></span><span class="opt-txt"><b>${name}${tag ? `<em>${tag}</em>` : ''}</b><span>${desc}</span></span></button>`).join('')}</div>`;
 const uiRow = (label, desc, ctl, attrs = '') => `<div class="set-row" ${attrs}><div class="set-label"><b>${label}</b><span>${desc}</span></div>${ctl}</div>`;
 
 const SET_VIEWS = {
@@ -4468,6 +4513,17 @@ const SET_VIEWS = {
     ${uiRow('Typing indicator', 'Let people see when you’re writing to them.', uiSwitch('typing'))}`,
 };
 
+SET_VIEWS.encryption = () => `
+    ${uiOpts('encryption', [
+      ['A256GCM', 'AES-256', 'Default · Recommended', '256-bit key. The strongest option and the largest safety margin. Fast on any modern device.'],
+      ['A128GCM', 'AES-128', '', '128-bit key. Still considered secure and slightly lighter on very old hardware.'],
+    ], 'Encryption method')}
+    <div class="set-group">What this covers</div>
+    ${uiRow('Saved message history', 'The encrypted copy of your new messages kept in the cloud so other devices can restore them.', '<span class="set-chip">Applies</span>')}
+    ${uiRow('Files you send', 'Every chunk of a file you send is encrypted with the chosen method.', '<span class="set-chip">Applies</span>')}
+    ${uiRow('Live chat', 'Delivered device to device over WebRTC, which has its own built-in encryption.', '<span class="set-chip dim">Not affected</span>')}
+    ${uiRow('Earlier messages', 'Each message keeps the method it was sent with. Changing this never locks you out of old ones, and people can always read what you send.', '<span class="set-chip dim">Unchanged</span>')}`;
+
 const notifyOn = () => notifSupported && Notification.permission === 'granted' && S.notify;
 function notifHint() {
   if (!notifSupported) return 'This browser doesn’t support notifications.';
@@ -4487,6 +4543,10 @@ function syncControls() {
   $$('[data-set]', setBody).forEach(el => {
     const k = el.dataset.set;
     if (el.classList.contains('switch')) el.setAttribute('aria-checked', String(k === 'notify' ? notifyOn() : !!S[k]));
+    else if (el.classList.contains('opt-list')) {
+      const btns = $$('[role="radio"]', el);
+      btns.forEach(b => b.setAttribute('aria-checked', String(b.dataset.v === S[k])));
+    }
     else if (el.classList.contains('seg')) {
       const v = k === 'theme' ? themePref() : S[k], btns = $$('[role="radio"]', el);
       btns.forEach(b => b.setAttribute('aria-checked', String(b.dataset.v === v)));
@@ -4578,6 +4638,7 @@ setBody.addEventListener('click', e => {
   if (k === 'timeFmt') refreshTimes();
   if (k === 'titleCount') updateTitle();
   if (k === 'textSize' || k === 'compact') { autosize(); }
+  if (k === 'encryption') toast(S.encryption === 'A128GCM' ? 'Encryption: AES-128' : 'Encryption: AES-256');
 });
 
 $('#setReset').addEventListener('click', () => {

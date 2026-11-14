@@ -2,8 +2,11 @@
  * Friendship + encrypted-history helpers.
  *
  * The two users in a pair are always stored in "canonical" order so A->B and B->A
- * resolve to the same key. All message content that touches KV is AES-256-GCM
- * encrypted with a per-pair symmetric key, so a KV dump is unreadable.
+ * resolve to the same key. All message content that touches KV is AES-GCM
+ * encrypted with a per-pair symmetric key, so a KV dump is unreadable. The
+ * SENDER picks the method per message (AES-256-GCM, the default, or AES-128-GCM)
+ * and the record remembers it in `a`, so every reader decrypts it correctly
+ * whatever their own setting is. Records without `a` are AES-256-GCM.
  *
  * KV keys (binding: WORM_HOLE)
  * ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +18,7 @@
  *     devices, so a clear on any one device hides the message on every device.
  *     A message is destroyed from hist when its id is in BOTH users' ledgers.
  *  hist:<A>:<B>     (A < B)  ->  JSON array
- *     [{ id, from, c (base64url GCM blob), at,
+ *     [{ id, from, c (base64url GCM blob), a ("A256GCM"|"A128GCM"), at,
  *        hiddenBy:[u] (legacy, still honoured), seenBy:[u], readBy:[u],
  *        recalled?:true, recalledAt? }]
  *     A RECALLED record is a tombstone: `c` is deleted (the ciphertext is gone
@@ -108,13 +111,28 @@ export async function readFileMeta(kv, meId, peerId) {
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const fromB64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 
+/* Encryption methods the sender may choose. The wire/KV names match JOSE's
+ * "enc" values. AES-256-GCM uses the pair key as-is; AES-128-GCM uses a 128-bit
+ * key derived from it with HKDF-SHA-256 (info below), so the 128-bit key is
+ * independent of the 256-bit one. The browser derives it the same way for files. */
+export const ALGS = ['A256GCM', 'A128GCM'];
+export const DEFAULT_ALG = 'A256GCM';
+export const isAlg = a => ALGS.includes(a);
+const HKDF_INFO = 'wh-aes-128-gcm';
+
 /** Generate the pair's 32-byte AES-256 key, base64url-encoded. */
 export function genPairKey() {
   return b64u(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-async function importKey(k) {
-  return crypto.subtle.importKey('raw', fromB64u(k), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+async function importKey(k, alg = DEFAULT_ALG) {
+  if (!isAlg(alg)) throw new Error('unsupported_alg');
+  const raw = fromB64u(k);
+  if (alg === 'A256GCM') return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  const base = await crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: new TextEncoder().encode(HKDF_INFO) },
+    base, { name: 'AES-GCM', length: 128 }, false, ['encrypt', 'decrypt']);
 }
 
 /**
@@ -122,9 +140,9 @@ async function importKey(k) {
  *   [ 12-byte IV ][ ciphertext+tag ]
  * The 12-byte IV is prepended so a single base64u string is self-describing.
  */
-export async function encryptMsg(key, text) {
+export async function encryptMsg(key, text, alg = DEFAULT_ALG) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const keyObj = await importKey(key);
+  const keyObj = await importKey(key, alg);
   const aad = new TextEncoder().encode('wh-msg');
   const ctTag = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad }, keyObj, new TextEncoder().encode(text)));
   const out = new Uint8Array(12 + ctTag.length);
@@ -133,12 +151,12 @@ export async function encryptMsg(key, text) {
   return b64u(out);
 }
 
-/** Decrypt a blob produced by encryptMsg. Throws on tamper (GCM auth fails). */
-export async function decryptMsg(key, blob) {
+/** Decrypt a blob produced by encryptMsg with the same `alg`. Throws on tamper (GCM auth fails) or on a wrong/unknown alg. */
+export async function decryptMsg(key, blob, alg = DEFAULT_ALG) {
   const raw = fromB64u(blob);
   const iv = raw.subarray(0, 12);
   const ctTag = raw.subarray(12);
-  const keyObj = await importKey(key);
+  const keyObj = await importKey(key, alg);
   const aad = new TextEncoder().encode('wh-msg');
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad }, keyObj, ctTag);
   return new TextDecoder().decode(pt);
@@ -231,13 +249,14 @@ export async function pushHistory(kv, a, b, msg) {
     // first pushed) — rather than overwriting them with blank arrays. Only
     // refresh the content if the copy we hold is missing the encrypted blob.
     // A recalled tombstone must never be resurrected by a late/duplicate push.
-    if (!existing.recalled && existing.c === undefined && msg.c !== undefined) existing.c = msg.c;
+    if (!existing.recalled && existing.c === undefined && msg.c !== undefined) { existing.c = msg.c; if (msg.a) existing.a = msg.a; }
     withFlags(existing);   // normalize (backfill seenBy/readBy on old records)
   } else {
     // A message both accounts already cleared is destroyed for good: a late or
     // duplicate push must not bring it back.
     if (isPurged({ id: msg.id }, a, b, cleared)) return arr.filter(m => !isPurged(m, a, b, cleared));
     const rec = { id: msg.id, from: msg.from, c: msg.c, at: msg.at };
+    if (msg.a) rec.a = msg.a;   // how `c` was encrypted (absent on old records = AES-256-GCM)
     withFlags(rec, {});   // -> seenBy/readBy []
     arr.push(rec);
   }
@@ -263,9 +282,10 @@ export async function readHistory(kv, meId, peerId) {
   for (const m of arr) {
     let text;
     if (m.recalled) text = '';   // tombstone: nothing to decrypt, and nothing to show
-    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; } }
+    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c, m.a || DEFAULT_ALG) : null; } catch { text = null; } }
     out.push({
       id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      alg: m.a || DEFAULT_ALG,
       recalled: !!m.recalled,
       // Did *I* (the caller) already see/read a record the peer sent me? Lets a
       // fresh device restore "read" locally instead of re-acknowledging it.
@@ -376,9 +396,10 @@ export async function readVisibleHistory(kv, meId, peerId) {
     if (isHiddenFor(m, meId, mine)) continue;   // my ACCOUNT cleared it (on any device)
     let text;
     if (m.recalled) text = '';   // tombstone: nothing to decrypt, and nothing to show
-    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c) : null; } catch { text = null; } }
+    else { try { text = keyB64 ? await decryptMsg(keyB64, m.c, m.a || DEFAULT_ALG) : null; } catch { text = null; } }
     out.push({
       id: m.id, from: m.from, at: m.at, text, unreadable: text === null,
+      alg: m.a || DEFAULT_ALG,
       recalled: !!m.recalled,
       // Did *I* (the caller) already see/read a record the peer sent me? Lets a
       // fresh device restore "read" locally instead of re-acknowledging it.
