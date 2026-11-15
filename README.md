@@ -1,107 +1,246 @@
 # Wormhole
 
-A small, private messenger that runs entirely on **Cloudflare Pages + Workers KV**. No servers to manage, no database to provision, no build step.
+A small, private messenger that runs entirely on **Cloudflare Pages + Workers KV**. There are no servers to manage, no database to provision and no build step: one static page, a handful of serverless functions, and one KV namespace.
 
-- **Accounts** — username + password, plus a random 8-digit ID that friends use to add you.
-- **Friends** — send / accept requests by ID.
-- **Live chat** — device-to-device over WebRTC (via [Trystero](https://github.com/dmotz/trystero), signalled through public Nostr relays).
-- **Persistent history** — every message is also saved to KV, AES-256-GCM encrypted, so a new device (or a reload) gets the conversation back.
-- **Files** — streamed peer-to-peer in encrypted 128 KB chunks. The receiver must accept each file. Only *metadata* is ever stored in KV.
-- **Receipts, recall, clear** — delivered / read ticks, 10-minute message recall, and a per-account "clear conversation" (messages **and** files).
-- **Notifications** — desktop notifications for new messages and incoming file requests, with per-chat mute (see below).
+| | |
+|---|---|
+| **Accounts** | Username + password. Every account also gets a random 8-digit ID that friends use to find you. |
+| **Friends** | Send and accept friend requests by ID. |
+| **Live chat** | Device to device over WebRTC ([Trystero](https://github.com/dmotz/trystero), signalled through public Nostr relays), with a KV fallback when a direct channel can't be opened. |
+| **History** | Every message is also saved to KV, AES-GCM encrypted, so a new device or a reload gets the conversation back. |
+| **Files** | Streamed peer to peer in encrypted 128 KB chunks. The receiver must accept each file. Only metadata is ever stored in KV. |
+| **Receipts, recall, clear** | Delivered and read ticks, a 10-minute message recall, and a per-account "clear conversation" that also clears the shared-files list. |
+| **Typing indicator** | Live "typing…" status (can be turned off). |
+| **Notifications** | Desktop notifications for new messages and file requests, with per-chat mute. |
+| **Settings** | Theme, language, text size, compact mode, reduced motion, notification options, message options and the encryption method, all stored in the browser. |
+| **Six languages** | English, 中文, Français, Русский, Español and العربية (the UN's official languages), with a right-to-left layout for Arabic. |
+
+---
+
+## Contents
+
+1. [How it works](#how-it-works)
+2. [Project layout](#project-layout)
+3. [Deploy](#deploy)
+4. [Using the app](#using-the-app)
+5. [Settings](#settings)
+6. [Languages](#languages)
+7. [Encryption and privacy](#encryption-and-privacy)
+8. [Data model (KV)](#data-model-kv)
+9. [API](#api)
+10. [Browser storage](#browser-storage)
+11. [Security notes](#security-notes)
+12. [Limits](#limits)
+13. [Troubleshooting](#troubleshooting)
+
+---
+
+## How it works
+
+```
+                     ┌──────────────────────── Cloudflare ────────────────────────┐
+  Browser A ─ HTTPS ─┤  Pages (index.html)   Pages Functions (/api/*)  ─►  KV      │
+  Browser B ─ HTTPS ─┤                       accounts · friends · history · files   │
+                     └─────────────────────────────────────────────────────────────┘
+       │                                                                  ▲
+       └──────── WebRTC data channel (live messages, file chunks) ────────┘
+                 found via public Nostr relays (signalling only)
+```
+
+- **Two delivery paths.** The live path is a direct WebRTC channel between the two browsers. The archive path is KV: every message is written there (encrypted) and every client polls it, once a second while the direct channel to a friend isn't open and about every 4 seconds while it is (that is how read and delivered ticks catch up). A message always arrives, even if the other person opens the page later or the channel never comes up.
+- **No server-side session memory.** A session is a random token in an `HttpOnly` cookie; KV only stores its SHA-256.
+- **Presence.** Each open tab sends a heartbeat; a person counts as online while their heartbeat key (15-second TTL) exists in KV, or while the direct channel to them is up.
+- **Files never touch KV.** The bytes travel over the data channel; KV only holds a small metadata record so a file reappears in the *Shared files* list on a new device.
 
 ---
 
 ## Project layout
 
 ```
-index.html                    the whole front end (HTML + CSS + JS in one file)
-sw.js                         service worker: shows notifications on Android, handles taps
-manifest.webmanifest          app name/icons (lets phones install it as an app)
-icon-192.png, icon-512.png    app / notification icons
-_headers                      security headers / CSP
-package.json                  wrangler scripts
-wrangler.example.toml         optional: bindings as code
+index.html                     the whole front end: HTML + CSS + JS + UI translations, one file
+_headers                       security headers and Content-Security-Policy
+package.json                   wrangler scripts (dev / deploy)
+wrangler.example.toml          optional: KV binding as code
 functions/
-  _lib/auth.js                sessions, password hashing, rate limiting, request guards
-  _lib/friends.js             pairing, encrypted history, receipts, clear ledger
-  api/auth/                   register · login · logout · me
-  api/friends/                request · respond · list · history · history-get · ack · recall · clear
-  api/files/                  meta · meta-list
-  api/presence/               beat · who
+  _lib/auth.js                 sessions, password hashing, rate limiting, request guards
+  _lib/friends.js              pairing, encrypted history, receipts, cleared ledger, file metadata
+  api/auth/                    register · login · logout · me
+  api/friends/                 request · respond · list · history · history-get · ack · recall · clear
+  api/files/                   meta · meta-list
+  api/presence/                beat · who
 ```
+
+There is nothing to compile. `index.html` is served as-is, and every file under `functions/` becomes a route (`functions/api/auth/login.js` → `POST /api/auth/login`).
+
+---
 
 ## Deploy
 
-1. **Create a KV namespace** (Cloudflare dashboard → Storage & Databases → KV).
-2. **Create a Pages project** from this repo (framework: *None*, build command: *none*, output directory: `/`).
-3. **Bind the namespace:** Pages project → Settings → Bindings → *KV namespace* → variable name **`WORM_HOLE`**. Do this for both *Production* and *Preview*.
+**Requirements:** a Cloudflare account (the free plan works) and, for the command-line route, Node.js.
+
+### From the dashboard
+
+1. **Create a KV namespace:** Storage & Databases → KV → *Create*.
+2. **Create a Pages project** from this repository: framework preset *None*, build command *empty*, output directory `/`.
+3. **Bind the namespace:** the project's Settings → Bindings → *KV namespace* → variable name **`WORM_HOLE`**. Do this for **both** Production and Preview.
 4. Deploy. Nothing else is required.
 
-Optional environment variable: `PBKDF2_ITERATIONS` (10 000 – 100 000, default 100 000 — the Workers maximum). Each user record stores the iteration count it was hashed with, so changing it never locks anyone out.
-
-Local development:
+### From the command line
 
 ```bash
 npm install
-npm run dev        # wrangler pages dev . --kv WORM_HOLE   (local KV, no cloud needed)
-npm run deploy     # wrangler pages deploy .
+npm run deploy        # wrangler pages deploy .
 ```
 
-If you prefer bindings in code, rename `wrangler.example.toml` to `wrangler.toml` and fill in the namespace ids. Once that file exists the dashboard Bindings page becomes read-only.
+The first deploy creates the Pages project; add the `WORM_HOLE` KV binding in the dashboard as in step 3 above and deploy again.
+
+### Local development
+
+```bash
+npm install
+npm run dev           # wrangler pages dev . --kv WORM_HOLE   (local KV, no cloud account needed)
+```
+
+### Optional configuration
+
+| Setting | Where | Default | Meaning |
+|---|---|---|---|
+| `PBKDF2_ITERATIONS` | environment variable | `100000` | Password-hash cost, clamped to 10 000 – 100 000 (the Workers maximum). Each user record stores the count it was hashed with, so changing it never locks anyone out. |
+| Bindings as code | rename `wrangler.example.toml` to `wrangler.toml` | – | Fill in the namespace ids. Once this file exists the dashboard's Bindings page becomes read-only. |
+| Signalling relays | `RELAY_URLS` in `index.html` | 4 public Nostr relays | Swap in your own to avoid third parties. |
+
+> **Updating an existing deployment:** deploy the whole project again, not just `index.html`. The browser and the functions evolve together (for example the encryption method and the shared-files clearing need both sides).
+
+---
+
+## Using the app
+
+**Sign up / sign in.** Create an account with a username (3–20 letters, digits or `_`, starting with a letter) and a password (8–128 characters). You can sign in with the username or the 8-digit ID. The ID is shown after registration and in the sidebar footer; it can't be changed.
+
+**Add a friend.** The **+** button in the sidebar takes their 8-digit ID and sends a request. Incoming requests appear above the conversation list with *Accept* / *Decline*.
+
+**Chat.**
+- **Enter** sends and **Shift+Enter** adds a line (or the reverse, see [Messages settings](#messages-settings)).
+- Hover (or tap) a message of yours for **Copy** and **Recall**. Recall works for 10 minutes; the text is removed from KV and the other side shows "Message recalled".
+- Ticks show the state of your messages: sent, delivered, read.
+- **Ctrl/⌘ + K** focuses conversation search; the search icon in the chat header searches inside the open chat.
+
+**Send files.** Use the paperclip, drag a file onto the chat, or paste from the clipboard. The other person gets an *Accept / Decline* card; nothing is transferred until they accept. Images open in a viewer with zoom and arrow-key navigation; videos and audio play inline.
+
+**Contact panel.** Mute notifications, search the chat, see the ID and local time of the other person, and browse *Shared files*.
+
+**Clear conversation** (chat menu). Hides the messages **and the shared files** of that chat for your account on every device. The other person keeps their copy until they clear it too; when both have, the records are deleted from KV. New messages and files after a clear appear normally. See [Clearing a conversation](#clearing-a-conversation).
+
+**Notifications and mute.**
+- On first sign-in a small card asks to turn notifications on (browsers need a click). *Not now* asks again after 7 days.
+- A new message or file request shows a system notification with the sender's name and a short preview. There is one notification per chat, updated in place; clicking it opens the chat.
+- Nothing pops up for the chat you are looking at while the window is visible and focused.
+- The tab title shows the unread count, for example `(3) Messages`.
+- **Mute** (contact panel or chat menu) is per account and stored in the browser. A muted chat gets no notification and is left out of the tab-title count; its unread badge still counts.
+- Notifications work while the page is open, including as a background tab. There is no push server, so nothing arrives after the app is fully closed. Some mobile browsers only allow notifications through a service worker, which this project does not include.
 
 ---
 
 ## Settings
 
-The **gear button** in the sidebar footer (it replaced the old sun/moon toggle) opens a settings dialog over a blurred app: sections on the left, options on the right. Everything is personal to the browser and stored in `localStorage`:
+The **gear** button in the sidebar footer opens a dialog over a blurred app: sections on the left, options on the right. Everything here is personal to the browser (see [Browser storage](#browser-storage)); the only thing that reaches the server is the encryption method of the messages you send.
 
-| Section | Options |
+### Appearance
+
+| Option | Values | Notes |
+|---|---|---|
+| Theme | Light · Dark · System | *System* follows the OS and reacts when it changes. The sign-in screen has its own small theme toggle. |
+| Language | Auto · English · 中文 · Français · Русский · Español · العربية | See [Languages](#languages). |
+| Text size | Small · Default · Large | Scales text across the whole app. |
+| Compact messages | on / off | Tighter spacing between messages. |
+| Reduce motion | on / off | Fewer sliding and fading effects. The OS "reduce motion" setting is honoured as well. |
+
+### Notifications
+
+| Option | Notes |
 |---|---|
-| **Appearance** | Theme (Light / Dark / System), text size, compact messages, reduce motion |
-| **Notifications** | Desktop notifications on/off (needs the browser permission), message preview, test alert, unread count in the tab title, list of muted chats with Unmute |
-| **Messages** | Enter sends (or Ctrl/⌘ + Enter), 12/24-hour time, read receipts, typing indicator |
+| Desktop notifications | The master switch. It asks the browser for permission when needed, and explains when notifications are blocked or unsupported. Turning it off pauses alerts without touching browser settings. |
+| Show message preview | Off: alerts only say "New message". |
+| Send a test alert | Shows how a notification looks. |
+| Unread count in tab title | Toggles the `(3) Messages` prefix. |
+| Muted chats | Lists muted chats with an *Unmute* button each. |
 
-Storage: `wh-settings` (JSON, all options above except theme), `chat-theme` (`light` / `dark`; absent = follow the system, read before first paint), `wh-muted:<id>` (unchanged). The sign-in screen keeps its own small theme toggle because the dialog is only available once signed in.
+### Messages settings
 
----
+| Option | Notes |
+|---|---|
+| Enter sends message | On: Enter sends. Off: Ctrl/⌘ + Enter sends and Enter adds a new line. |
+| Time format | Auto · 12-hour · 24-hour. Applies to chats and the conversation list immediately. |
+| Read receipts | Off: people see your replies as delivered but never as read. |
+| Typing indicator | Off: people don't see when you're typing. |
 
-## Notifications and mute
+### Encryption
 
-On first sign-in the app shows a small card asking to turn notifications on (browsers require a click; "Not now" asks again after 7 days). Once allowed:
+Choose the method used for what you send: **AES-256** (default, recommended) or **AES-128**. Details in [Encryption and privacy](#encryption-and-privacy).
 
-- A new message or incoming file request shows a system notification with the sender's name and a short preview. There is one notification per chat, updated in place; clicking it opens that chat.
-- Nothing pops up for the chat you are looking at while the window is visible and focused.
-- The tab title shows the unread count, e.g. `(3) Messages`.
-- **Mute** (Info panel or the chat menu) is per account and stored in the browser (`wh-muted:<id>` in localStorage), so it survives reloads. A muted chat gets no notification, no row pulse and is left out of the tab-title count; its unread badge still counts.
-- A message that arrives both live (P2P) and from KV notifies once. Opening a chat for the first time in a session loads history silently.
-
-The **bell button** in the sidebar footer shows the state and is the way back if you dismissed the card: lit = on (tap to pause everything without touching browser settings), dim = paused / not asked yet / blocked (tapping explains how to unblock in the browser).
-
-**Android:** Chrome refuses `new Notification()` on phones, so all notifications go through the service worker (`sw.js`, served from the site root). Tapping one focuses the app and opens that chat. **iPhone:** only works for the app installed to the Home Screen (iOS 16.4+), via the manifest.
-
-Limits: notifications work while the page is open, including as a background tab. There is no push server (Web Push would need a server-side sender), so nothing arrives after the app is fully closed.
+**Reset to defaults** (bottom of the section list) restores every option, including theme and language.
 
 ---
 
-## How data is stored in KV
+## Languages
 
-Everything lives in **one** KV namespace (binding `WORM_HOLE`). There is no other database. KV is a flat key → string store, so the "tables" below are just key prefixes, and structured values are JSON strings.
+The interface ships in the six official UN languages: **English, 中文 (简体), Français, Русский, Español, العربية**. Pick one in *Settings → Appearance → Language*, or leave it on **Auto**, which follows the browser's language and falls back to English. The choice is saved in the browser and applied to `<html lang dir>` before the first paint.
 
-Two user ids are always written in **canonical order** (`pair(a, b)` = the numerically/lexically smaller one first), so A→B and B→A resolve to the same key. Below, `<A>:<B>` means the sorted pair, `<U>`/`<P>` means *owner*/*peer* (directional).
+- **Everything is translated:** the interface, toasts, notifications, sign-in screens, date labels, and the server's error messages (translated in the browser).
+- **Arabic is right-to-left.** The layout mirrors: the sidebar sits on the right, your own messages on the left, and panels and menus slide in from the mirrored side. Message text uses `dir="auto"`, so mixed Arabic / English chats read correctly.
+- **Dates and times** use the language's locale (Arabic uses Latin digits, like the 8-digit IDs).
+
+**How it works.** English text is the key. The code calls `tr('Some text', { vars })`, which looks the text up in `window.WH_I18N[lang]` and falls back to the English itself, so a missing translation never breaks the UI. The dictionary is the `/*i18n:start*/ … /*i18n:end*/` block in the `<head>` of `index.html`, so the app has no separate translation file to deploy. Static markup keeps its English text; at start-up every known text node and `placeholder` / `aria-label` / `title` is registered once and re-written on each language change.
+
+**Adding a language:**
+1. Add an entry to `LANGS` in the main script (`code`, native `name`, `html` language tag, `locale`, `dir`).
+2. Add the code to the allowed list in the small `<head>` script that sets `lang` / `dir` before first paint.
+3. Add a block for it to `WH_I18N` with the same keys as the others (copy a block and translate the values; keep `{placeholders}` intact).
+4. For a right-to-left language, the `:root[dir="rtl"]` rules at the end of the stylesheet already apply.
+
+---
+
+## Encryption and privacy
+
+| Data | Protection |
+|---|---|
+| Live messages | Sent over a WebRTC data channel, which the browser encrypts (DTLS). |
+| Message archive in KV | AES-GCM with a per-pair key, encrypted by the server. |
+| File bytes | Never stored. Sent over the data channel in 128 KB chunks, each chunk encrypted with AES-GCM in the browser on top of DTLS. |
+| Passwords | Salted PBKDF2-SHA256 hash (default 100 000 iterations); the password itself is never stored. |
+| Sessions | Random token in an `HttpOnly; SameSite=Lax` cookie (`Secure` on https); KV holds only its SHA-256, so a KV read can't be replayed as a login. |
+
+### Choosing AES-256 or AES-128
+
+The **sender** picks the method and every encrypted item carries it, so the reader never needs to know the sender's setting:
+
+- **Message archive:** the browser sends `alg` with `POST /api/friends/history`; the server encrypts with it and stores it on the record as `a`. A missing `a` (records from before this option existed) means AES-256-GCM. An unknown `alg` is rejected with `400 invalid_alg`. `history-get` returns each message's `alg`.
+- **Files:** the offer and every `file-chunk` frame carry `alg`; the receiver decrypts each chunk with the method named in that chunk (missing or unknown = AES-256-GCM).
+- **Keys:** AES-256-GCM uses the pair key directly. AES-128-GCM uses a 128-bit key derived from the same pair key with HKDF-SHA-256 (zero salt, info `wh-aes-128-gcm`), computed identically on the server and in the browser, so no extra key is stored.
+- **Not affected:** live P2P messages (WebRTC's own encryption) and messages already sent. Each keeps the method it was sent with, so changing the setting never makes old history unreadable, and people can always read what you send.
+
+AES-128 is still considered secure; AES-256 has the larger safety margin and is the default.
+
+> **Read this before trusting it.** The archive is encrypted at rest but **not zero-knowledge**: each chat's key sits in the same KV namespace (`pairkey:`) so that new devices can recover history. That protects against a casual look at one `hist:` value; it does **not** protect against someone with full read access to the namespace, which includes you as the owner and anyone with a Cloudflare API token for it. Treat the namespace like a database of plaintext.
+
+---
+
+## Data model (KV)
+
+Everything lives in **one** KV namespace (binding `WORM_HOLE`). KV is a flat key → string store, so the "tables" below are key prefixes and structured values are JSON strings. User ids in pair keys are always written in **canonical order** (the lexically smaller first), so A→B and B→A resolve to the same key. `<A>:<B>` below means that sorted pair; `<U>` / `<P>` means owner / peer (directional).
 
 | Key | Value | Written by | Lifetime |
 |---|---|---|---|
 | `user:id:<id>` | JSON user record | register | permanent |
-| `user:name:<lowercase-name>` | the user's `<id>` (plain string) | register | permanent |
+| `user:name:<lowercase-name>` | the user's `<id>` | register | permanent |
 | `session:<sha256(token)>` | JSON `{ uid, exp }` | login / register | 7 days |
 | `idx:<id>` | JSON array of peer ids | friend request / accept | permanent |
 | `friend:<A>:<B>` | JSON `{ status, by, at }` | request / respond | permanent (deleted on decline) |
-| `pairkey:<A>:<B>` | plain string: base64url 32-byte AES key | first request / first history write | permanent |
-| `hist:<A>:<B>` | JSON array of message records | send / ack / recall / clear | refreshed to 10 y on every write |
-| `clr:<U>:<P>` | JSON `{ ids: [msgId, …] }` | **U's** clear | refreshed to 10 y |
-| `files:<A>:<B>` | JSON array of file metadata | send / receive | refreshed to 10 y |
-| `present:<id>` | JSON `{ at }` | heartbeat | **15 seconds** |
+| `pairkey:<A>:<B>` | base64url 32-byte AES key | first request / first history write | permanent |
+| `hist:<A>:<B>` | JSON array of message records | send / ack / recall / clear | refreshed to 10 years on every write |
+| `clr:<U>:<P>` | JSON `{ ids: [...] }` | **U's** clear | refreshed to 10 years |
+| `files:<A>:<B>` | JSON array of file metadata | send / receive / clear | refreshed to 10 years |
+| `present:<id>` | JSON `{ at }` | heartbeat | 15 seconds |
 | `rl:<bucket>` | JSON `{ n }` | rate limiter | 60 s – 1 h |
 
 ### Record shapes
@@ -118,198 +257,129 @@ Two user ids are always written in **canonical order** (`pair(a, b)` = the numer
 }
 ```
 
-Passwords are never stored; only a salted PBKDF2-SHA256 hash. Usernames start with a letter (3–20 chars of `A-Za-z0-9_`), so a username can never be confused with an 8-digit id at sign-in. IDs are uniformly random in `10000000–99999999`.
+Usernames start with a letter (3–20 characters of `A-Za-z0-9_`), so a username can never be confused with an 8-digit ID at sign-in. IDs are uniformly random in `10000000–99999999`.
 
-**`session:<sha256(token)>`** — the browser holds the random token in an `HttpOnly; SameSite=Lax` cookie (`wh_session`); KV only ever sees its SHA-256, so a KV read cannot be replayed as a login.
+**`friend:<A>:<B>`**: `status` is `"pending"` or `"friend"`, `by` is who sent the request, `at` is a millisecond timestamp. **`idx:<id>`** is a per-user list of every peer with a pending or accepted relation, so listing friends never needs a KV scan.
 
-**`friend:<A>:<B>`** — `status` is `"pending"` or `"friend"`; `by` is who sent the request; `at` is a millisecond timestamp. A declined request is deleted.
+**`hist:<A>:<B>`** is an array, oldest first, capped at the newest **200** records:
 
-**`idx:<id>`** — e.g. `["20481733","77120045"]`. A per-user index of every peer with a pending or accepted relation, so listing friends never needs a KV scan.
-
-**`hist:<A>:<B>`** — an array, oldest first, capped at the newest **200** records:
-
-```json
+```jsonc
 [{
   "id": "k3j9x0…",              // message id (also the P2P id)
   "from": "48213907",           // sender
   "c": "…base64url…",           // ciphertext, see below
+  "a": "A256GCM",               // method used for `c`: A256GCM | A128GCM (absent = A256GCM)
   "at": 1761825600000,          // SERVER time when it was archived
-  "seenBy": ["20481733"],       // delivered receipts — written only by the receiver
-  "readBy": ["20481733"],       // read receipts — superset of seenBy
+  "seenBy": ["20481733"],       // delivered receipts, written only by the receiver
+  "readBy": ["20481733"],       // read receipts (a superset of seenBy)
   "recalled": true,             // tombstone: `c` removed, id/from/at kept
   "recalledAt": 1761825650000,
   "hiddenBy": ["…"]             // legacy field from older versions; still honoured, no longer written
 }]
 ```
 
-`c` is one base64url string: `[ 12-byte random IV ][ ciphertext + 16-byte GCM tag ]`, AES-256-GCM, with the constant additional-data string `wh-msg`, keyed by that pair's `pairkey`. A recalled message is replaced by a **tombstone** (no `c`), so the ciphertext is really gone from KV but the peer's other devices learn the message was recalled.
+`c` is one base64url string: `[ 12-byte random IV ][ ciphertext + 16-byte GCM tag ]`, AES-GCM with the constant additional-data string `wh-msg`, keyed by the pair's `pairkey` (or the HKDF-derived key for AES-128). A recalled message becomes a **tombstone** with no `c`: the ciphertext is really gone from KV, but the other person's devices learn it was recalled.
 
-**`clr:<U>:<P>`** — the *account-level cleared ledger*, see "Clear" below. Capped at the newest 600 ids.
+**`clr:<U>:<P>`** is the account-level *cleared ledger* (below), capped at the newest 600 ids.
 
-**`files:<A>:<B>`** — capped at 100:
+**`files:<A>:<B>`** is capped at 100 records:
 
 ```json
 [{ "fileId": "…", "name": "report.pdf", "type": "application/pdf", "size": 482113, "at": 1761825600000, "status": "sent" }]
 ```
 
-`status` is `sending`, `sent` or `received`. File **content is never stored** — it only travels peer-to-peer.
+`status` is `sending`, `sent` or `received`. File **content is never stored**.
 
-**`present:<id>`** — a heartbeat that expires on its own after 15 s; a peer counts as online if the beat is under 5 s old.
+**`rl:<bucket>`** are best-effort throttling counters: `login:<ip>:<sha256(identifier)>` (5 failures per 15 minutes), `reg:<ip>` (10 accounts per hour), `frr:<ip>` (20 friend requests per hour). KV is eventually consistent, so add a Cloudflare WAF rate-limit rule on `/api/auth/*` if you need a hard cap.
 
-**`rl:<bucket>`** — best-effort throttling counters. Buckets: `login:<ip>:<sha256(identifier)>` (5 failures / 15 min), `reg:<ip>` (10 accounts / hour), `frr:<ip>` (20 friend requests / hour). KV is eventually consistent, so add a Cloudflare WAF rate-limit rule on `/api/auth/*` if you need a hard cap.
+### Clearing a conversation
 
-### Clear conversation (per account, not per device)
+Clearing belongs to the **account**, not the device:
 
-Clearing belongs to the **account**:
+1. Account A clears (on any device). The ids that device was showing, plus the ids of the files in the *Shared files* list, are added to A's ledger `clr:A:B`. A's other devices read that ledger on their next history poll and drop the same messages, local caches and stored file content. B is untouched and still sees everything.
+2. When B clears the same messages, their ids are in **both** ledgers and the server **deletes those records from `hist`**. Whichever account clears second triggers the delete.
+3. Ledgers keep the ids after the records are gone, so a stale device can learn a message is gone and a late duplicate can't bring it back.
 
-1. Account A clears (on any device). The ids A's device was showing are added to A's ledger `clr:A:B`. A's other devices read that ledger on their next history poll and drop the same messages — including local caches. B is untouched and still sees everything.
-2. When B clears the same messages, their ids are now in **both** ledgers, and the server **deletes those records from `hist`** (whichever account clears second triggers the delete).
-3. Ledgers keep the ids after the records are gone, so a stale device can learn a message is gone and a late duplicate can't resurrect it.
+**Shared files follow the chat.** A file's chat bubble has the message id `file-<fileId>`. The *Shared files* list shows only files that are still part of the conversation:
+- `GET /api/files/meta-list` leaves out files the caller's account cleared (it accepts either `file-<fileId>` or the bare `fileId` in the ledger);
+- the browser filters the list with its own copy of the ledger as well;
+- a file's metadata record is destroyed once **both** accounts have cleared it;
+- files still being transferred keep their bubble and stay listed.
 
-**Files are cleared with the conversation.** Each file record is cleared under its chat-bubble id (`file-<fileId>`), so the "Shared files" list empties on every device of the account, the file's stored content in the browser (IndexedDB) is deleted, and the `files:` record is destroyed from KV once both accounts have cleared it. New messages and files after a clear show up normally.
+### Consistency
 
-### Concurrency & consistency
-
-KV is **eventually consistent** (changes can take up to ~60 s to be visible everywhere) and has no transactions, so writers are written to be additive: receipt flags are owned by the receiver and only ever added, ledgers have one writer each, and every `hist` write re-reads before it writes. A write that lands in the same instant as another write to the *same* `hist` key can still lose one of them; this is a KV limitation.
+KV is **eventually consistent** (changes can take up to about a minute to be visible everywhere) and has no transactions. Writers are therefore additive: receipt flags are owned by the receiver and only ever added, ledgers have one writer each, and every `hist` write re-reads before it writes. Two writes to the *same* `hist` key in the same instant can still lose one of them; that is a KV limitation.
 
 ---
 
 ## API
 
-All endpoints are `POST` JSON unless marked `GET`, return `{ ok, … }` or `{ ok:false, error:{ code, message } }`, and require the session cookie except `register` / `login`.
+All endpoints take and return JSON, answer with `{ ok: true, … }` or `{ ok: false, error: { code, message } }`, and require the session cookie except `register` and `login`. Methods are `POST` unless marked `GET`. Every state-changing request also has its `Origin` checked against the site, on top of `SameSite=Lax`.
 
 | Endpoint | Purpose |
 |---|---|
 | `auth/register`, `auth/login`, `auth/logout`, `GET auth/me` | accounts and sessions |
 | `friends/request`, `friends/respond`, `GET friends/list` | friend graph |
-| `friends/history` | archive one message (the server encrypts it with the pair key) |
-| `GET friends/history-get` | read my visible history `{ key, cleared:[id], msgs:[…] }` |
+| `friends/history` | archive one message `{ uuid, text, id?, alg? }`; the server encrypts it |
+| `GET friends/history-get?uuid=` | my visible history `{ key, cleared: [id], msgs: [...] }`; each message includes `alg` |
 | `friends/ack` | delivered / read receipts |
-| `friends/recall` | recall a message (10 min window) |
+| `friends/recall` | recall a message (10-minute window plus a 15-second grace) |
 | `friends/clear` | clear for **my account** `{ uuid, ids? }` |
-| `files/meta`, `GET files/meta-list` | file metadata |
-| `presence/beat`, `GET presence/who` | online status |
+| `files/meta`, `GET files/meta-list?uuid=` | file metadata (the list excludes files my account cleared) |
+| `presence/beat`, `GET presence/who?uuid=` | online status |
 
-Every state-changing request is also checked for same-origin `Origin`, on top of `SameSite=Lax` cookies.
+Error messages are English; the browser translates the known ones.
 
-## Security notes — read before trusting it
+### Live (peer-to-peer) messages
 
-- **Encrypted at rest, but not zero-knowledge.** History is AES-GCM encrypted, but each chat's key sits in the **same KV namespace** (`pairkey:`) so new devices can recover history. That protects against a casual look at one `hist:` value; it does **not** protect against someone with full read access to the namespace (that includes you, the owner, and anyone with a Cloudflare API token for it). Guard the namespace like a database of plaintext.
-- Live P2P traffic is DTLS-encrypted by WebRTC; file chunks add an extra per-chunk AES-GCM layer.
-- Public Nostr relays are used only for WebRTC signalling (pinned list in `index.html`, `RELAY_URLS`). Swap in your own relays if you want to avoid third parties.
-- Sessions last 7 days; passwords are 8–128 characters.
+Sent over the WebRTC data channel as small objects with a `kind`: `msg`, `read`, `seen`, `typing`, `recall`, and for files `file-offer`, `file-accept`, `file-reject`, `file-chunk` and `file-done`. The room name is derived from the sorted pair of ids, so both sides join the same room without any extra round trip.
 
 ---
 
-## Admin console (optional)
+## Browser storage
 
-`admin.html` is a standalone page for **browsing and cleaning the KV namespace**. It is deployed as its **own** Pages project, separate from the chat app.
+| Where | Key | Holds |
+|---|---|---|
+| `localStorage` | `wh-settings` | JSON of all personal settings except theme: `textSize`, `compact`, `reduceMotion`, `notify`, `preview`, `titleCount`, `enterSend`, `timeFmt`, `readReceipts`, `typing`, `lang` (`auto` or a language code), `encryption` (`A256GCM` or `A128GCM`) |
+| `localStorage` | `chat-theme` | `light` or `dark`; absent means follow the system (read before first paint) |
+| `localStorage` | `wh-muted:<id>` | muted chats of the signed-in account |
+| `localStorage` | `wh-cache:<id>` | local copy of recent messages |
+| `localStorage` | `wh-cleared:<id>` | this device's copy of the account's cleared-ids ledger |
+| `localStorage` | `wh-notif-ask` | when "Not now" was chosen on the notification card |
+| IndexedDB | `wormhole-files` | the content of files sent or received on this device |
 
-**What it does**
-
-- Lists every key, filtered by type (users, sessions, chats, ledgers, …), with search, paging and expiry times.
-- Opens any value: friendly views for users (password hash masked), message history, file metadata, friend index and cleared ledgers; raw JSON for the rest.
-- **Decrypts chat history in your browser** on demand (it fetches that chat's `pairkey` and decrypts locally).
-- Deletes single keys, a multi-selection, or *everything under a prefix*; removes individual messages / file records / ids from inside an array; edits raw values.
-- **Delete user & all data** — account, username index, sessions, friendships, every chat and file list with their friends (both sides), and the id in friends' indexes. Needs a one-off *Scan all keys*.
-- Destructive actions list exactly what will go; bulk and account-level ones require typing a confirmation word.
-
-**Why there is a small server part:** a browser can't talk to KV directly, and Cloudflare's REST API blocks cross-origin calls. So the admin Pages project gets a ~50-line function that binds the *same* KV namespace and does the four operations the page needs, behind a secret token.
-
-### Set it up
-
-```
-wormhole-admin/
-├─ index.html              ← admin.html, renamed
-├─ functions/api/admin.js  ← the function below
-└─ _headers                ← optional: "/*"  then "  X-Robots-Tag: noindex"
-```
-
-1. Create the files above (copy the function from below).
-2. `npx wrangler pages deploy . --project-name wormhole-admin`
-3. In that project: Settings → Bindings → KV namespace → variable **`WORM_HOLE`** → pick the **same namespace** as the chat app (Production and Preview).
-4. Set a long random secret: `npx wrangler pages secret put ADMIN_TOKEN --project-name wormhole-admin` (min. 16 characters; `openssl rand -base64 32` works).
-5. Open the page, keep the endpoint `/api/admin`, paste the token.
-
-> **Strongly recommended:** put the admin project behind **Cloudflare Access** (Zero Trust → Access → Applications) so only you can even load it. The token is a second lock, not the only one. The token is held in `sessionStorage` and cleared on *Disconnect*.
-
-`functions/api/admin.js`:
-
-```js
-const MAX_BATCH = 100;
-
-export async function onRequest({ request, env }) {
-  const reply = (obj, status = 200) => new Response(JSON.stringify(obj), {
-    status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
-
-  const token = env.ADMIN_TOKEN;
-  if (!env.WORM_HOLE) return reply({ error: 'KV binding WORM_HOLE is missing' }, 500);
-  if (!token || token.length < 16) return reply({ error: 'ADMIN_TOKEN is not set (min 16 characters)' }, 503);
-
-  const given = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!(await sameSecret(given, token))) return reply({ error: 'Unauthorized' }, 401);
-
-  const url = new URL(request.url);
-  const op = url.searchParams.get('op');
-  const kv = env.WORM_HOLE;
-
-  try {
-    if (op === 'list' && request.method === 'GET') {
-      const limit = Math.min(1000, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 200));
-      const r = await kv.list({ prefix: url.searchParams.get('prefix') || '', cursor: url.searchParams.get('cursor') || undefined, limit });
-      return reply({ keys: r.keys.map(k => ({ name: k.name, expiration: k.expiration || null })), list_complete: r.list_complete, cursor: r.cursor || null });
-    }
-    if (op === 'get' && request.method === 'GET') {
-      const key = url.searchParams.get('key');
-      if (!key) return reply({ error: 'key required' }, 400);
-      const value = await kv.get(key);
-      return reply({ key, exists: value !== null, value });
-    }
-    if (op === 'put' && request.method === 'POST') {
-      const { key, value, expiration } = await request.json();
-      if (typeof key !== 'string' || !key || typeof value !== 'string') return reply({ error: 'key and value (string) required' }, 400);
-      const keep = Number(expiration) > Date.now() / 1000 + 120;   // KV needs a future expiry ≥ 60 s
-      await kv.put(key, value, keep ? { expiration: Math.floor(Number(expiration)) } : undefined);
-      return reply({ ok: true });
-    }
-    if (op === 'delete' && request.method === 'POST') {
-      const { keys } = await request.json();
-      if (!Array.isArray(keys) || !keys.length || keys.length > MAX_BATCH || keys.some(k => typeof k !== 'string' || !k)) {
-        return reply({ error: `keys must be 1–${MAX_BATCH} strings` }, 400);
-      }
-      await Promise.all(keys.map(k => kv.delete(k)));
-      return reply({ ok: true, deleted: keys.length });
-    }
-    return reply({ error: 'Unknown operation' }, 400);
-  } catch (e) {
-    return reply({ error: String(e && e.message || e) }, 500);
-  }
-}
-
-// Constant-time comparison (hash both sides first so lengths don't leak).
-async function sameSecret(a, b) {
-  const enc = new TextEncoder();
-  const [x, y] = await Promise.all([a, b].map(async s => new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(s)))));
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
-}
-```
-
-**Hosting the admin page somewhere that isn't Cloudflare** (Netlify, Vercel, …): the HTML works anywhere, but KV can't be bound there. Implement the same four operations (`list`, `get`, `put`, `delete`) in that host's function using the [Cloudflare KV REST API](https://developers.cloudflare.com/api/resources/kv/) (`/accounts/{id}/storage/kv/namespaces/{ns}/keys`, `/values/{key}`, `/bulk/delete`) with an API token that has *Workers KV Storage: Edit*, and keep the same request/response shapes as above.
-
-### Admin cautions
-
-- Deleting `user:*`, `session:*` or `pairkey:*` keys signs people out, removes accounts, or makes stored history permanently unreadable. There is no undo; KV has no backups.
-- Editing `hist:` / `clr:` / `idx:` while people are chatting can race the live app. Prefer the per-item **Remove** buttons over *Edit raw*, and do bulk work when the app is quiet.
-- Counts and *Delete user & all data* rely on a scan; run *Rescan* first if the data changed.
+Deleting browser data removes settings and local file content, never the account or the KV archive.
 
 ---
 
-## Known limits
+## Security notes
 
-- History is capped at the newest 200 messages per chat, file metadata at 100 per chat.
-- A message cleared by one account stays on the other account until *they* clear it too (by design).
-- Live delivery needs both devices online and able to reach a relay and each other (WebRTC); otherwise messages arrive from KV history on the next poll.
-- KV's eventual consistency means other devices can take up to about a minute to reflect a change made from a different region.
+- The archive is encrypted at rest but not zero-knowledge; see the warning under [Encryption and privacy](#encryption-and-privacy).
+- Live traffic is encrypted by WebRTC; file chunks add a per-chunk AES-GCM layer.
+- Public Nostr relays are used **only** for WebRTC signalling; message content never goes through them. The relay list is pinned in `index.html` (`RELAY_URLS`).
+- The Trystero library is loaded from jsDelivr (version pinned to `0.26.0`). The Content-Security-Policy in `_headers` allows that origin, WebSocket connections for the relays, `blob:` for received images and media, and nothing else third-party.
+- Sessions last 7 days. Passwords are 8–128 characters. Login attempts are throttled per IP and identifier.
+- `_headers` also sets `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and a restrictive `Permissions-Policy`.
+- If you run this for other people, guard the KV namespace and your Cloudflare API tokens accordingly: they can read everything, including pair keys.
+
+---
+
+## Limits
+
+- History is capped at the newest **200** messages per chat; file metadata at **100** per chat; messages at **2000** characters.
+- A message cleared by one account stays visible to the other account until *they* clear it too (by design).
+- Live delivery needs both devices online and able to reach a relay and each other (WebRTC, with no TURN server configured). When the direct channel can't be opened, messages still arrive through the KV archive on the next poll, but typing indicators and file transfers need the direct channel.
+- KV's eventual consistency means other devices may take up to about a minute to reflect a change made from a different region.
+- Notifications need the page to be open (a background tab is fine) and a secure (https) origin.
+
+---
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| Every API call fails with *Server is missing the WORM_HOLE KV binding* | The KV namespace isn't bound. Add the binding named exactly `WORM_HOLE` for Production **and** Preview, then redeploy. |
+| The language (or another new feature) doesn't change after an update | The browser is serving the old page. Hard refresh (Ctrl/⌘ + Shift + R) and make sure the new `index.html` is what's deployed. |
+| Messages arrive but files or "typing…" don't | The direct WebRTC channel isn't up (restrictive network, blocked relays). Try another network, or set your own relays in `RELAY_URLS`. |
+| Notifications never appear | The site must be on https and the permission must be *Allow* in the browser's site settings; also check *Settings → Notifications* isn't paused and the chat isn't muted. |
+| "Too many attempts" at sign-in | The login throttle (5 failures per 15 minutes per IP and account) kicked in; wait and retry. |

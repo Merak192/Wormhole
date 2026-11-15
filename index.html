@@ -3385,10 +3385,10 @@ async function refreshSharedFiles(peerId) {
   if (app.dataset.info !== 'open') return;
   const list = $('#filesList'), count = $('#filesCount');
   if (!list || peerId !== cur()?.id) return;
-  // Only files that are still part of the chat: anything this account cleared stays out of the list
-  // (a file's id is its message id, so the cleared-ids ledger covers it).
+  // Only files that are still part of the chat: anything this account cleared stays out of the list.
+  // The cleared-ids ledger holds a file's bubble id ('file-<fileId>'); the bare id is accepted too.
   const gone = cur().clearedIds;
-  const files = (await loadFileMeta(peerId)).filter(f => !(gone && gone.has(f.fileId)));
+  const files = (await loadFileMeta(peerId)).filter(f => !(gone && (gone.has('file-' + f.fileId) || gone.has(f.fileId))));
   const sorted = [...files].sort((a, b) => b.at - a.at);
   count.textContent = String(sorted.length);
   if (!sorted.length) { list.innerHTML = `<div class="files-empty">${tr('No shared files yet.')}</div>`; return; }
@@ -4174,8 +4174,8 @@ $('#modalConfirm').addEventListener('click', async () => {
     // The "Shared files" list is part of the history: clear those files too. (Files still mid-transfer
     // keep their bubble, so they stay listed.)
     const busyIds = new Set(c.messages.filter(m => m.file && ['sending', 'receiving'].includes(m.file.status)).map(m => m.id));
-    const fileIds = (await loadFileMeta(friendId)).map(f => f.fileId).filter(id => validTag(id) && !busyIds.has(id));
-    const ids = [...new Set([...c.messages.filter(m => validTag(m.id)).map(m => m.id), ...fileIds])].slice(-400);
+    const fileIds = (await loadFileMeta(friendId)).map(f => f.fileId).filter(id => validTag('file-' + id) && !busyIds.has('file-' + id));
+    const ids = [...new Set([...c.messages.filter(m => validTag(m.id)).map(m => m.id), ...fileIds.map(id => 'file-' + id)])].slice(-400);
     c._clearing = true;                 // guard: syncLoop merges wait for this
     const res = await api('/api/friends/clear', { uuid: friendId, ids });
     c._clearing = false;

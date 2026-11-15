@@ -99,10 +99,17 @@ export async function pushFileMeta(kv, a, b, meta) {
 }
 
 /**
+ * A file's chat bubble has the message id `file-<fileId>`, so the cleared-ids ledger
+ * normally holds that form; the bare `fileId` is accepted too (the browser also sends
+ * it for files that are listed but have no bubble on the clearing device).
+ */
+const fileCleared = (set, fileId) => set.has('file-' + fileId) || set.has(fileId);
+
+/**
  * Read the pair's file-metadata list (oldest->newest), minus the files MY account
- * has cleared. A file's id is its message id, so "Clear conversation" (which records
- * message ids in the per-account ledger) hides the file from the Shared files list
- * the same way it hides the message. The peer still sees it until they clear it too.
+ * has cleared. "Clear conversation" records ids in the per-account ledger, which hides
+ * the file from the Shared files list the same way it hides its message. The peer still
+ * sees it until they clear it too.
  */
 export async function readFileMeta(kv, meId, peerId) {
   const [arr, mine] = await Promise.all([
@@ -111,7 +118,7 @@ export async function readFileMeta(kv, meId, peerId) {
   ]);
   if (!mine.length) return arr;
   const hidden = new Set(mine);
-  return arr.filter(f => !hidden.has(f.fileId));
+  return arr.filter(f => !fileCleared(hidden, f.fileId));
 }
 
 /* ── crypto ────────────────────────────────────────────────────── */
@@ -354,7 +361,7 @@ export async function markHiddenForUser(kv, userId, peerId, ids) {
   // Same rule for the Shared files list: a file's metadata is destroyed once BOTH accounts cleared it.
   const fkey = filesKey(userId, peerId);
   const files = (await kv.get(fkey, 'json')) || [];
-  const keptFiles = files.filter(f => !(cleared[userId].has(f.fileId) && cleared[peerId].has(f.fileId)));
+  const keptFiles = files.filter(f => !(fileCleared(cleared[userId], f.fileId) && fileCleared(cleared[peerId], f.fileId)));
   if (keptFiles.length !== files.length) await kv.put(fkey, JSON.stringify(keptFiles), { expirationTtl: HISTORY_TTL });
   return { cleared: ledger, added, purged };
 }
